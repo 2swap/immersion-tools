@@ -29,16 +29,22 @@ mkdir -p anki/audio
 ffmpeg -loglevel error -i "$1" -map 0:$3 $subs
 
 i=-1
-while IFS= read -r line; do
+
+while read -r line; do
+    echo "$line"
     ((i++))
+
     if [[ ! $line =~ ^Dialogue.* ]]; then
         continue
     fi
-    starttime=$(echo $line | sed -rn 's/Dialogue[^,]*,([^,]*),([^,]*),[^,]*,[^,]*,[^,]*,[^,]*,[^,]*,[^,]*,(.*)/\1/p')
-    [ -z "$starttime" ] && continue
-    endtime=$(echo $line | sed -rn 's/Dialogue[^,]*,([^,]*),([^,]*),[^,]*,[^,]*,[^,]*,[^,]*,[^,]*,[^,]*,(.*)/\2/p')
-    text=$(echo $line | sed -rn 's/Dialogue[^,]*,([^,]*),([^,]*),[^,]*,[^,]*,[^,]*,[^,]*,[^,]*,[^,]*,(.*)/\3/p')
-    audiofilename="$4$i.$aud_ext"
-    ffmpeg -i "$1" -ss "$starttime"0 -to "$endtime"0 -q:a 0 -map a anki/audio/$audiofilename && echo -e "[sound:$audiofilename]\t$text" >> $import && ((i))
-done < $subs
+
+    start_time=$(echo "$line" | cut -d ',' -f 2)
+    end_time=$(echo "$line" | cut -d ',' -f 3)
+    text=$(echo "$line" | cut -d ',' -f 10)
+    audio_file_name="$4$i.$aud_ext"
+
+    ffmpeg -nostdin -i "$1" -ss "${start_time}0" -to "${end_time}0" -q:a 0 -map a "anki/audio/$audio_file_name" > /dev/null 2>&1
+
+    echo -e "[sound:$audio_file_name]\t$text" >> "$import"
+done < "$subs"
 

@@ -67,11 +67,9 @@ else
     ffmpeg -loglevel error -i "$video_file" -map 0:$subs_stream $subs
 fi
 
-i=-1
+audio_tag_number=-1
 
 while read -r line; do
-    ((i++))
-
     # Parse the subtitle line based on the subtitle format
     if [[ $subtitle_format == "ass" ]]; then
         if [[ ! $line =~ ^Dialogue.* ]]; then
@@ -86,20 +84,35 @@ while read -r line; do
         fi
         start_time=$(echo "$line" | awk -F ' --> ' '{print $1}')
         end_time=$(echo "$line" | awk -F ' --> ' '{print $2}')
-        read -r text
+        text=""
+        nextline=""
+        while IFS= read -r nextline && [[ "$(printf '%s' "$nextline" | tr -d '[:space:]')" != "" ]]; do
+            nextline=$(echo "$nextline" | tr -d '\r\n')
+            text="$text $nextline"
+        done
     fi
+    
+    ((audio_tag_number++))
+
+    # Remove all occurrences of <...something...> or {...something...} from the text variable, and get rid of
+    # leading or trailing whitespace.
+    text=$(echo "$text" | sed -E 's/<[^>]*>//g; s/\{[^}]*\}//g; s/^[[:space:]]+//; s/[[:space:]]+$//;')
+    
+    start_time=$(echo "000${start_time}000" | sed -E 's/.*([0-9]:[0-9][0-9]:[0-9][0-9].[0-9][0-9][0-9]).*/\1/')
+      end_time=$(echo "000${end_time}000"   | sed -E 's/.*([0-9]:[0-9][0-9]:[0-9][0-9].[0-9][0-9][0-9]).*/\1/')
 
     # Create the audio file name based on the media prefix and index
-    audio_file_name="$media_prefix$i.$aud_ext"
+    audio_file_name="$media_prefix$audio_tag_number.$aud_ext"
     
-    echo "$start_time $end_time $text $audio_file_name"
+    echo "Start:  $start_time"
+    echo "End:    $end_time"
+    echo "Text:   $text"
+    echo "Name:   $audio_file_name"
+    echo "Stream: $audio_stream"
+    echo
 
     # Generate audio snippet
-    if [[ $subtitle_format == "ass" ]]; then
-        ffmpeg -nostdin -i "$video_file" -ss "${start_time}0" -to "${end_time}0" -q:a 0 -map a "anki/audio/$audio_file_name" > /dev/null 2>&1
-    elif [[ $subtitle_format == "vtt" ]]; then
-        ffmpeg -nostdin -i "$video_file" -ss "$start_time" -to "$end_time" -q:a 0 -map a "anki/audio/$audio_file_name" > /dev/null #2>&1
-    fi
+    ffmpeg -nostdin -i "$video_file" -ss "$start_time" -to "$end_time" -map a "anki/audio/$audio_file_name" > /dev/null #2>&1
 
     # Write the line as an Anki card
     echo -e "[sound:$audio_file_name]\t$text" >> "$import"

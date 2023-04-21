@@ -112,7 +112,7 @@ while read -r line; do
     echo
 
     # Generate audio snippet
-    ffmpeg -nostdin -i "$video_file" -ss "$start_time" -to "$end_time" -map a "anki/audio/$audio_file_name" > /dev/null #2>&1
+    ffmpeg -nostdin -i "$video_file" -acodec copy -ss "$start_time" -to "$end_time" -map 0:$audio_stream "anki/audio/$audio_file_name" > /dev/null 2>&1
 
     # Write the line as an Anki card
     echo -e "[sound:$audio_file_name]\t$text" >> "$import"

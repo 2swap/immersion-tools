@@ -38,13 +38,14 @@ import=anki/import_to_anki.tsv
 
 # Cleanup old files
 rm -r anki/
-mkdir -p anki/audio
+mkdir -p anki/data
 
 # Determine the audio file extension based on the audio stream number of the video file
 aud_ext=$(ffprobe "$video_file" 2>&1 | grep Stream | grep "0:$audio_stream" | sed -rn 's/.*Audio: ([a-z]*).*/\1/p')
 echo "detected audio format $aud_ext"
 
 if [[ "$use_subs_file" == true ]]; then
+    echo "Using external subs file"
     # If the -f flag is provided, make sure the required arguments are provided as well
     if [[ "$#" -ne 5 ]]; then
         echo "-f flag usage: subs2srs -f vtt/subs/file video/file.mkv audio_stream_number media_prefix"
@@ -55,6 +56,7 @@ if [[ "$use_subs_file" == true ]]; then
     # Copy the provided subtitle file to the subs file for Anki
     cp "$subs_in" "$subs"
 else
+    echo "Using internal subtitle stream"
     # If the -f flag is not provided, make sure the required arguments are provided
     if [[ "$#" -ne 4 ]]; then
         echo "Usage: subs2srs video/file.mkv audio_stream_number subtitle_stream_number media_prefix"
@@ -66,6 +68,8 @@ else
     # Extract the subtitle stream from the video file and save it to the subtitle file
     ffmpeg -loglevel error -i "$video_file" -map 0:$subs_stream $subs
 fi
+echo "Extracted subtitles."
+read -p "Press enter to begin deck creation, after removing extraneous subs. (optional)"
 
 audio_tag_number=-1
 
@@ -104,18 +108,31 @@ while read -r line; do
     # Create the audio file name based on the media prefix and index
     audio_file_name="$media_prefix$audio_tag_number.$aud_ext"
     
-    echo "Start:  $start_time"
-    echo "End:    $end_time"
-    echo "Text:   $text"
-    echo "Name:   $audio_file_name"
-    echo "Stream: $audio_stream"
-    echo
+    echo "$text"
 
     # Generate audio snippet
-    ffmpeg -nostdin -i "$video_file" -acodec copy -ss "$start_time" -to "$end_time" -map 0:$audio_stream "anki/audio/$audio_file_name" > /dev/null 2>&1
+    ffmpeg -nostdin -i "$video_file" -acodec copy -ss "$start_time" -to "$end_time" -map 0:$audio_stream "anki/data/$audio_file_name" > /dev/null 2>&1
+
+    # Generate images
+    image_start_file_name="$media_prefix$audio_tag_number-1.jpg"
+    ffmpeg -nostdin -ss "$start_time" -i "$video_file" -vframes 1 -q:v 2 "anki/data/$image_start_file_name" > /dev/null 2>&1
+
+    image_end_file_name="$media_prefix$audio_tag_number-2.jpg"
+    ffmpeg -nostdin -ss "$end_time" -i "$video_file" -vframes 1 -q:v 2 "anki/data/$image_end_file_name" > /dev/null 2>&1
 
     # Write the line as an Anki card
-    echo -e "[sound:$audio_file_name]\t$text" >> "$import"
+    echo -e "[sound:$audio_file_name]\t$text\t<img src='$image_start_file_name'>\t<img src='$image_end_file_name'>" >> "$import"
 
 done < "$subs"
 
+
+read -p "Do you want to move all files from anki/data/ to ~/anki_media/? (y/n) " answer
+
+if [ "$answer" == "y" ]
+then
+  echo "Moving files..."
+  mv anki/data/* ~/anki_media/
+  echo "Done!"
+else
+  echo "Aborting."
+fi

@@ -1,2 +1,2 @@
-# 1k-tools
-Stuff to make it very easy to make a 1k anki deck (refold style)
+# immersion-tools
+The random tools I use for foreign language study

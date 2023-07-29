@@ -1,7 +1,6 @@
 import os
 import subprocess
 import shutil
-import time
 import json
 import re
 import readline
@@ -9,10 +8,11 @@ import readline
 def make_project_folder():
     project_name = input("Select a project name. This will be appended to all of the generated media files to group them: ")
     media_prefix = f"ankimmerse_{project_name}"
-    timestamp = time.strftime("%Y%m%d_%H%M%S")
-    output_folder_name = f"{media_prefix}_{timestamp}"
-    output_folder_path = os.path.join(os.getcwd(), output_folder_name)
-    os.makedirs(output_folder_path)
+    output_folder_path = os.path.join(os.getcwd(), media_prefix)
+    if os.path.exists(output_folder_path):
+        print("Seems this project already exists! Continuing where we left off...")
+    else:
+        os.makedirs(output_folder_path)
     return output_folder_path, media_prefix
 
 def request_path_check_valid(prompt):
@@ -45,6 +45,11 @@ def clean_subs(srt_path):
         f.writelines(cleaned_lines)
 
 def get_subtitles(video_file, output_folder_path):
+    subs = os.path.join(output_folder_path, "subs.srt")
+    if os.path.exists(subs):
+        print("Subtitle file already exists. Skipping step.")
+        return
+
     try:
         ffprobe_subtitles_output = subprocess.check_output(["ffprobe", video_file, "-select_streams", "s", "-show_streams", "-of", "json"], stderr=subprocess.PIPE, text=True)
         subtitles_data = json.loads(ffprobe_subtitles_output)
@@ -58,7 +63,7 @@ def get_subtitles(video_file, output_folder_path):
     except subprocess.CalledProcessError as e:
         print("Error occurred while running ffprobe for subtitle streams:")
         print(e.stderr)
-        return None
+        return
 
     use_subs_file = None
     while use_subs_file == None:
@@ -70,7 +75,6 @@ def get_subtitles(video_file, output_folder_path):
         else:
             print("Option not recognized! Try again.")
 
-    subs = os.path.join(output_folder_path, "subs.srt")
     if use_subs_file:
         subs_in = request_path_check_valid("\nUsing external subs file. Enter the subtitle file path: ")
         # Copy the provided subtitle file to the subs file for Anki
@@ -88,6 +92,11 @@ def get_subtitles(video_file, output_folder_path):
     input(f"\nPlease remove extraneous subtitles by editing {subs} (optional.) Press enter when done editing, or if you wish to import all subtitles.")
 
 def get_audio(video_file, output_folder_path):
+    audio_file = os.path.join(output_folder_path, "audio.mp3")
+    if os.path.exists(audio_file):
+        print("Audio file already exists. Skipping step.")
+        return
+
     try:
         ffprobe_audio_output = subprocess.check_output(["ffprobe", video_file, "-select_streams", "a", "-show_streams", "-of", "json"], stderr=subprocess.PIPE, text=True)
         audio_data = json.loads(ffprobe_audio_output)
@@ -103,7 +112,6 @@ def get_audio(video_file, output_folder_path):
         print("Extracting and converting audio from video. This will take a few minutes.")
 
         # Extract the audio stream using ffmpeg and save it to the audio file
-        audio_file = os.path.join(output_folder_path, "audio.mp3")
         subprocess.run(["ffmpeg", "-i", video_file, "-map", f"0:{audio_stream}", audio_file], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
 
     except subprocess.CalledProcessError as e:
@@ -114,13 +122,22 @@ def parse_subtitle_entry(subs_file):
     try:
         entry_lines = []
 
+        # Get the initial file position
+        initial_pos = subs_file.tell()
+
         # Read the lines until an empty line is encountered, indicating the end of the entry
         while True:
             line = subs_file.readline().strip()
-            if not line:  # Empty line indicates the end of the entry
-                if not entry_lines: # EOF
-                    return None
-                break
+
+            # Empty line indicates the end of the entry
+            if not line:
+                # Check if the current position is the same as the initial position
+                # If it is, then we have reached the end of the file
+                current_pos = subs_file.tell()
+                if current_pos == initial_pos:
+                    return "EOF"  # End of file, no more entries
+                break  # Empty line within the entry, end of the entry
+
             entry_lines.append(line)
 
         # Check if the entry has at least three lines (index, timestamps, and dialogue)
@@ -137,14 +154,15 @@ def parse_subtitle_entry(subs_file):
             return (index, begin_time.replace(",", "."), end_time.replace(",", "."), dialogue)
         else:
             print(entry_lines)
-            raise ValueError("Invalid SRT entry: Entry does not contain the expected number of lines.")
+            return "skip"
     except Exception as e:
         raise ValueError(f"Error occurred while parsing SRT entry: {str(e)}")
 
 def make_deck(video_file, output_folder_path, media_prefix):
     print("\nCreating cards!")
     media_directory = os.path.join(output_folder_path, "media")
-    os.makedirs(media_directory)
+    if not os.path.exists(media_directory):
+        os.makedirs(media_directory)
 
     # Read the subtitles and cut up the video
     import_path = os.path.join(output_folder_path, "import.tsv")
@@ -153,9 +171,11 @@ def make_deck(video_file, output_folder_path, media_prefix):
     with open(subs_path, "r") as subs_file, open(import_path, "w") as import_file_handle:
         while True:
             srt_data = parse_subtitle_entry(subs_file)
-            if srt_data == None:
+            if srt_data == "EOF":
                 print("Done!\n")
                 return
+            if srt_data == "skip":
+                continue
             index, begin_time, end_time, dialogue = srt_data
             print(f"{index} {dialogue}")
 
@@ -167,11 +187,14 @@ def make_deck(video_file, output_folder_path, media_prefix):
             image_end_path = os.path.join(media_directory, image_end_name)
 
             # Generate audio snippet
-            subprocess.run(["ffmpeg", "-nostdin", "-i", full_audio_path, "-acodec", "copy", "-ss", begin_time, "-to", end_time, audio_path], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+            if not os.path.exists(audio_path):
+                subprocess.run(["ffmpeg", "-nostdin", "-i", full_audio_path, "-acodec", "copy", "-ss", begin_time, "-to", end_time, audio_path], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
 
             # Generate images
-            subprocess.run(["ffmpeg", "-nostdin", "-ss", begin_time, "-i", video_file, "-vframes", "1", "-q:v", "2", image_begin_path], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
-            subprocess.run(["ffmpeg", "-nostdin", "-ss", end_time  , "-i", video_file, "-vframes", "1", "-q:v", "2", image_end_path  ], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+            if not os.path.exists(image_begin_path):
+                subprocess.run(["ffmpeg", "-nostdin", "-ss", begin_time, "-i", video_file, "-vframes", "1", "-q:v", "2", image_begin_path], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+            if not os.path.exists(image_end_path):
+                subprocess.run(["ffmpeg", "-nostdin", "-ss", end_time  , "-i", video_file, "-vframes", "1", "-q:v", "2", image_end_path  ], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
 
             # Write the line as an Anki card
             import_file_handle.write(f"[sound:{audio_name}]\t{dialogue}\t<img src='{image_begin_name}'>\t<img src='{image_end_name}'>\n")
@@ -184,13 +207,13 @@ def move_files_to_anki_media(output_folder_path):
         print("Moving files...")
         if not os.path.exists(destination_dir):
             os.makedirs(destination_dir)
-        for file_name in os.listdir(source_dir):
-            source_file_path = os.path.join(source_dir, file_name)
+        for file_name in os.listdir(media_directory):
+            source_file_path = os.path.join(media_directory, file_name)
             destination_file_path = os.path.join(destination_dir, file_name)
-            shutil.move(source_file_path, destination_file_path)
+            shutil.copy(source_file_path, destination_file_path)
         print("Done!")
     else:
-        print("Skipping file copy.")
+        print("Skipping file move.")
 
 def main():
     # enable tab completion

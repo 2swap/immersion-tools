@@ -13,6 +13,9 @@ def make_project_folder():
         print("Seems this project already exists! Continuing where we left off...")
     else:
         os.makedirs(output_folder_path)
+    media_directory = os.path.join(output_folder_path, "media")
+    if not os.path.exists(media_directory):
+        os.makedirs(media_directory)
     return output_folder_path, media_prefix
 
 def request_path_check_valid(prompt):
@@ -24,6 +27,21 @@ def request_path_check_valid(prompt):
         else:
             print("Error: The specified file does not exist.")
     return path
+
+def get_video(output_folder_path):
+    video_path_file = os.path.join(output_folder_path, "video_path.txt")
+    if os.path.exists(video_path_file):
+        print("Subtitle file already exists. Skipping step.")
+        print("Video path file already exists. Reading video path from file.")
+        with open(video_path_file, 'r') as file:
+            video_path = file.readline().strip()
+            if os.path.exists(video_path):
+                print("Using video path from the file:", video_path)
+                return video_path
+    video_path = request_path_check_valid("Enter the video file path: ")
+    with open(video_path_file, 'w') as file:
+        file.write(video_path)
+    return video_path
 
 def clean_subs(srt_path):
     with open(srt_path, 'r', encoding='utf-8') as f:
@@ -44,7 +62,39 @@ def clean_subs(srt_path):
     with open(srt_path, 'w', encoding='utf-8') as f:
         f.writelines(cleaned_lines)
 
-def get_subtitles(video_file, output_folder_path):
+def convert_to_srt_time(seconds):
+    ms = int((seconds % 1) * 1000)
+    seconds = int(seconds)
+    minutes = seconds // 60
+    seconds %= 60
+    hours = minutes // 60
+    minutes %= 60
+    return f"{hours:02d}:{minutes:02d}:{seconds:02d},{ms:03d}"
+
+def generate_srt_with_sound_references(subs_file, stream_index, video_file, media_prefix, output_folder_path):
+    ffprobe_output = subprocess.check_output(["ffprobe", "-v", "error", "-select_streams", stream_index, "-show_entries", "packet=pts_time,duration_time", "-of", "csv=p=0", video_file], stderr=subprocess.PIPE, text=True)
+
+    timestamps = ffprobe_output.strip().split('\n')
+    timestamps = [line.split(",") for line in timestamps]
+
+    audio_files = [f"{media_prefix}_{i+1}_translation.mp3" for i in range(len(timestamps))]
+
+    print_audio_streams(video_file)
+    audio_stream = input("Since you chose a bitmap based subtitle, please enter the audio stream index number for a language you understand: ") #TODO check the number is valid
+
+    with open(subs_file, 'w') as subs:
+        for i, (begin_time, duration) in enumerate(timestamps):
+            begin_time_float = float(begin_time)
+            end_time_float = begin_time_float + float(duration)
+            begin_time_srt = convert_to_srt_time(begin_time_float)
+            end_time_srt = convert_to_srt_time(end_time_float)
+            audio_path = os.path.join(output_folder_path, "media", audio_files[i])
+            subs.write(f"{i + 1}\n{begin_time_srt} --> {end_time_srt}\n[sound:{audio_files[i]}]\n\n")
+            if not os.path.exists(audio_path):
+                cmd = ["ffmpeg", "-nostdin", "-i", video_file, "-map", f"0:{audio_stream}", "-ss", begin_time_srt.replace(",", "."), "-to", end_time_srt.replace(",", "."), audio_path]
+                subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+
+def get_subtitles(video_file, output_folder_path, media_prefix):
     subs = os.path.join(output_folder_path, "subs.srt")
     if os.path.exists(subs):
         print("Subtitle file already exists. Skipping step.")
@@ -59,7 +109,8 @@ def get_subtitles(video_file, output_folder_path):
             index = stream.get("index")
             codec_name = stream.get("codec_name")
             language = stream["tags"].get("language")
-            print(f"Index: {index}, Codec Name: {codec_name}, Language: {language}")
+            warning = " -> This subtitle appears to be bitmap-based. A translation audio stream will be required. Choose a different stream if possible." if codec_name == "dvd_subtitle" else ""
+            print(f"Index: {index}, Codec Name: {codec_name}, Language: {language} {warning}")
     except subprocess.CalledProcessError as e:
         print("Error occurred while running ffprobe for subtitle streams:")
         print(e.stderr)
@@ -80,16 +131,41 @@ def get_subtitles(video_file, output_folder_path):
         # Copy the provided subtitle file to the subs file for Anki
         subprocess.run(["ffmpeg", "-i", subs_in, subs], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
     else:
-        subs_stream = input("\nUsing internal subtitle stream. Enter the subtitle stream index number: ") #TODO check the number is valid
-        print("Extracting and converting subtitles from video. This should not take more than 2 minutes.")
+        chosen_sub = None
+        while chosen_sub == None:
+            subs_stream = input("\nUsing internal subtitle stream. Enter the subtitle stream index number: ") #TODO check the number is valid
+            for stream in subtitles_data.get("streams", []):
+                index = stream.get("index")
+                codec_name = stream.get("codec_name")
+                if str(subs_stream) == str(index):
+                    chosen_sub = stream
+                    break
+            if chosen_sub == None:
+                print("Index not recognized. Try again!")
 
-        # Extract the subtitle stream from the video file and save it to the subtitle file in SRT format
-        subprocess.run(["ffmpeg", "-i", video_file, "-map", f"0:{subs_stream}", subs], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        if chosen_sub.get("codec_name") == "dvd_subtitle":
+            print("Generating SRT file with sound references for bitmap subtitles...")
+            generate_srt_with_sound_references(subs, subs_stream, video_file, media_prefix, output_folder_path)
+        else:
+            print("Extracting and converting subtitles from video. This should not take more than 2 minutes.")
+            # Extract the subtitle stream from the video file and save it to the subtitle file in SRT format
+            subprocess.run(["ffmpeg", "-i", video_file, "-map", f"0:{subs_stream}", subs], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
 
     print("Removing HTML and other inline markup including <> and {} blocks from subtitles...")
     clean_subs(subs)
 
     input(f"\nPlease remove extraneous subtitles by editing {subs} (optional.) Press enter when done editing, or if you wish to import all subtitles.")
+
+def print_audio_streams(video_file):
+    ffprobe_audio_output = subprocess.check_output(["ffprobe", video_file, "-select_streams", "a", "-show_streams", "-of", "json"], stderr=subprocess.PIPE, text=True)
+    audio_data = json.loads(ffprobe_audio_output)
+    print("\n\n\nAudio Streams:")
+
+    for stream in audio_data.get("streams", []):
+        index = stream.get("index")
+        codec_name = stream.get("codec_name")
+        language = stream["tags"].get("language")
+        print(f"Index: {index}, Codec Name: {codec_name}, Language: {language}")
 
 def get_audio(video_file, output_folder_path):
     audio_file = os.path.join(output_folder_path, "audio.mp3")
@@ -98,16 +174,7 @@ def get_audio(video_file, output_folder_path):
         return
 
     try:
-        ffprobe_audio_output = subprocess.check_output(["ffprobe", video_file, "-select_streams", "a", "-show_streams", "-of", "json"], stderr=subprocess.PIPE, text=True)
-        audio_data = json.loads(ffprobe_audio_output)
-        print("\n\n\nAudio Streams:")
-
-        for stream in audio_data.get("streams", []):
-            index = stream.get("index")
-            codec_name = stream.get("codec_name")
-            language = stream["tags"].get("language")
-            print(f"Index: {index}, Codec Name: {codec_name}, Language: {language}")
-
+        print_audio_streams(video_file)
         audio_stream = input("Enter the audio stream index number: ") #TODO check the number is valid
         print("Extracting and converting audio from video. This will take a few minutes.")
 
@@ -149,7 +216,7 @@ def parse_subtitle_entry(subs_file):
             begin_time, end_time = re.findall(r'\d+:\d+:\d+,\d+', entry_lines[1])
 
             # Concatenate the dialogue lines into a single string
-            dialogue = ' '.join(entry_lines[2:])
+            dialogue = ' '.join(entry_lines[2:]).replace("\"", "")
 
             return (index, begin_time.replace(",", "."), end_time.replace(",", "."), dialogue)
         else:
@@ -160,9 +227,6 @@ def parse_subtitle_entry(subs_file):
 
 def make_deck(video_file, output_folder_path, media_prefix):
     print("\nCreating cards!")
-    media_directory = os.path.join(output_folder_path, "media")
-    if not os.path.exists(media_directory):
-        os.makedirs(media_directory)
 
     # Read the subtitles and cut up the video
     import_path = os.path.join(output_folder_path, "import.tsv")
@@ -179,6 +243,7 @@ def make_deck(video_file, output_folder_path, media_prefix):
             index, begin_time, end_time, dialogue = srt_data
             print(f"{index} {dialogue}")
 
+            media_directory = os.path.join(output_folder_path, "media")
             audio_name = f"{media_prefix}_{index}.mp3"
             audio_path = os.path.join(media_directory, audio_name)
             image_begin_name = f"{media_prefix}_{index}-begin.jpg"
@@ -213,7 +278,7 @@ def move_files_to_anki_media(output_folder_path):
             shutil.copy(source_file_path, destination_file_path)
         print("Done!")
     else:
-        print("Skipping file move.")
+        print("Skipping file copy.")
 
 def main():
     # enable tab completion
@@ -221,8 +286,8 @@ def main():
 
     output_folder_path, media_prefix = make_project_folder()
 
-    video_file = request_path_check_valid("Enter the video file path: ")
-    get_subtitles(video_file, output_folder_path)
+    video_file = get_video(output_folder_path)
+    get_subtitles(video_file, output_folder_path, media_prefix)
     get_audio(video_file, output_folder_path)
 
     make_deck(video_file, output_folder_path, media_prefix)

@@ -33,7 +33,14 @@ search_videos() {
     local videos=$(find "$path" -type f \( -iname "*.mp4" -o -iname "*.mkv" -o -iname "*.avi" -o -iname "*.webm" \))
 
     IFS=$'\n'  # Set the input field separator to only newline character
-    for video in $videos; do
+ 
+    # Convert the videos list to an array
+    videos_array=($videos)
+    
+    # Shuffle the array randomly
+    shuffled_videos=($(shuf -e "${videos_array[@]}"))
+    
+    for video in "${shuffled_videos[@]}"; do
         if ! is_watched "$video"; then
             play_video "$video"
             ask_completion && mark_as_watched "$video"

@@ -12,13 +12,16 @@ WATCHED_IN_BOOKMARK_LIST = []
 WATCHED_OUTSIDE_BOOKMARK_LIST = []
 DIRECTORIES = []
 
+
 def load_directories_from_bookmark():
     """Loading directories from the bookmark..."""
 
     global DIRECTORIES
-    assert(os.path.exists(BOOKMARK_FILE))
+    assert os.path.exists(BOOKMARK_FILE), f"The bookmark file '{BOOKMARK_FILE}' does not exist."
+    
     with open(BOOKMARK_FILE, 'r') as f:
-        DIRECTORIES = [line.strip() for line in f.readlines()]
+        # Ignore lines starting with # and strip whitespace
+        DIRECTORIES = [line.strip() for line in f.readlines() if not line.startswith('#')]
 
 
 def load_videos():
@@ -41,9 +44,14 @@ def load_videos():
 
 def load_videos_from_directory(directory):
     """Load videos from a specific directory."""
+    
+    full_directory_path = os.path.join("/media/swap/primary", directory)
+    
+    # Assert that the directory exists
+    assert os.path.exists(full_directory_path), f"The directory '{full_directory_path}' does not exist."
 
     videos = []
-    for root, _, files in os.walk(os.path.join("/media/swap/primary", directory)):
+    for root, _, files in os.walk(full_directory_path):
         for file in files:
             if any(file.endswith(ext) for ext in VIDEO_EXTENSIONS):
                 videos.append(os.path.join(root, file))
@@ -144,7 +152,7 @@ def main(shuffle=False):
     check_working_directory()
 
     load_videos()
-    
+
     print_stats()
     if(args.stats):
         exit()

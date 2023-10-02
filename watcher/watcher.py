@@ -52,7 +52,9 @@ def load_videos_from_directory(directory):
 
     videos = []
     for root, _, files in os.walk(full_directory_path):
-        for file in files:
+        # Sort files alphanumerically
+        sorted_files = sorted(files)
+        for file in sorted_files:
             if any(file.endswith(ext) for ext in VIDEO_EXTENSIONS):
                 videos.append(os.path.join(root, file))
     return videos

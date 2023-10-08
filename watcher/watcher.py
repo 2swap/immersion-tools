@@ -129,11 +129,12 @@ def print_stats():
 
 
 def search_videos_from_list(shuffle):
-    for video in TO_WATCH_LIST:
+    for video in TO_WATCH_LIST.copy():
+        os.system('clear')
+        print_stats()
         play_video(video)
         input("Enter to mark complete the video")
         mark_as_watched(video)
-        print_stats()
 
 def check_working_directory():
 
@@ -155,8 +156,8 @@ def main(shuffle=False):
 
     load_videos()
 
-    print_stats()
     if(args.stats):
+        print_stats()
         exit()
 
     if shuffle:

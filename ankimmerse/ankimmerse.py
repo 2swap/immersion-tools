@@ -213,12 +213,27 @@ def parse_subtitle_entry(subs_file):
             index = entry_lines[0]
 
             # Parse the timestamps (begin_time and end_time)
-            begin_time, end_time = re.findall(r'\d+:\d+:\d+,\d+', entry_lines[1])
+            begin_time_str, end_time_str = re.findall(r'\d+:\d+:\d+,\d+', entry_lines[1])
+            begin_time_str = begin_time_str.replace(",", ":")
+            end_time_str = end_time_str.replace(",", ":")
+
+            # Convert the timestamps to seconds
+            begin_time_seconds = sum(x * int(t) for x, t in zip([3600, 60, 1, 1/1000], begin_time_str.split(":")[0:4]))
+            end_time_seconds = sum(x * int(t) for x, t in zip([3600, 60, 1, 1/1000], end_time_str.split(":")[0:4]))
+
+            # Apply the buffer
+            buffer = 0.5
+            begin_time_seconds -= buffer
+            end_time_seconds += buffer
+
+            # Convert the adjusted times back to their original format
+            begin_time_adjusted = '{:02d}:{:02d}:{:02d}.{}'.format(int(begin_time_seconds // 3600), int((begin_time_seconds % 3600) // 60), int(begin_time_seconds % 60), int((begin_time_seconds % 1) * 1000))
+            end_time_adjusted = '{:02d}:{:02d}:{:02d}.{}'.format(int(end_time_seconds // 3600), int((end_time_seconds % 3600) // 60), int(end_time_seconds % 60), int((end_time_seconds % 1) * 1000))
 
             # Concatenate the dialogue lines into a single string
             dialogue = ' '.join(entry_lines[2:]).replace("\"", "")
 
-            return (index, begin_time.replace(",", "."), end_time.replace(",", "."), dialogue)
+            return (index, begin_time_adjusted, end_time_adjusted, dialogue)
         else:
             print(entry_lines)
             return "skip"
@@ -246,30 +261,33 @@ def make_deck(video_file, output_folder_path, media_prefix):
             media_directory = os.path.join(output_folder_path, "media")
             audio_name = f"{media_prefix}_{index}.mp3"
             audio_path = os.path.join(media_directory, audio_name)
-            image_begin_name = f"{media_prefix}_{index}-begin.jpg"
-            image_begin_path = os.path.join(media_directory, image_begin_name)
-            image_end_name = f"{media_prefix}_{index}-end.jpg"
-            image_end_path = os.path.join(media_directory, image_end_name)
 
             # Generate audio snippet
             if not os.path.exists(audio_path):
                 subprocess.run(["ffmpeg", "-nostdin", "-i", full_audio_path, "-acodec", "copy", "-ss", begin_time, "-to", end_time, audio_path], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
 
+            # Bound image size to 1280x720
+            image_scale_filter = "scale='min(1280,iw)':'min(720,ih)'"
+            image_begin_name = f"{media_prefix}_{index}-begin.jpg"
+            image_begin_path = os.path.join(media_directory, image_begin_name)
+            image_end_name = f"{media_prefix}_{index}-end.jpg"
+            image_end_path = os.path.join(media_directory, image_end_name)
+
             # Generate images
             if not os.path.exists(image_begin_path):
-                subprocess.run(["ffmpeg", "-nostdin", "-ss", begin_time, "-i", video_file, "-vframes", "1", "-q:v", "2", image_begin_path], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+                subprocess.run(["ffmpeg", "-nostdin", "-ss", begin_time, "-i", video_file, "-vf", image_scale_filter, "-vframes", "1", "-q:v", "2", image_begin_path], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
             if not os.path.exists(image_end_path):
-                subprocess.run(["ffmpeg", "-nostdin", "-ss", end_time  , "-i", video_file, "-vframes", "1", "-q:v", "2", image_end_path  ], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+                subprocess.run(["ffmpeg", "-nostdin", "-ss", end_time, "-i", video_file, "-vf", image_scale_filter, "-vframes", "1", "-q:v", "2", image_end_path], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
 
             # Write the line as an Anki card
             import_file_handle.write(f"[sound:{audio_name}]\t{dialogue}\t<img src='{image_begin_name}'>\t<img src='{image_end_name}'>\n")
 
 def move_files_to_anki_media(output_folder_path):
-    answer = input("Do you want to move all files from anki/data/ to ~/anki_media/? (y/n): ").lower()
+    answer = input("Do you want to copy all files from anki/data/ to ~/anki_media/? (y/n): ").lower()
     if answer == "y":
         media_directory = os.path.join(output_folder_path, "media")
         destination_dir = os.path.expanduser("~/anki_media/")
-        print("Moving files...")
+        print("Copying files...")
         if not os.path.exists(destination_dir):
             os.makedirs(destination_dir)
         for file_name in os.listdir(media_directory):

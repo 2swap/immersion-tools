@@ -154,7 +154,17 @@ def get_subtitles(video_file, output_folder_path, media_prefix):
     print("Removing HTML and other inline markup including <> and {} blocks from subtitles...")
     clean_subs(subs)
 
-    input(f"\nPlease remove extraneous subtitles by editing {subs} (optional.) Press enter when done editing, or if you wish to import all subtitles.")
+    # Prompt user
+    user_response = input(f"\nYou have the option to remove extraneous subtitles by editing the subtitle file.\nDo you want to open it with Sublime Text for editing? (Y/n): ")
+
+    if user_response.lower() != 'n':
+        try:
+            subprocess.run(['subl', subs], check=True)
+            input("Press enter when done editing.")
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            input(f"Failed to open {subs} with Sublime Text. Please edit the file manually and press enter to continue.")
+    else:
+        print("Proceeding with unedited subtitles.")
 
 def print_audio_streams(video_file):
     ffprobe_audio_output = subprocess.check_output(["ffprobe", video_file, "-select_streams", "a", "-show_streams", "-of", "json"], stderr=subprocess.PIPE, text=True)
@@ -222,7 +232,7 @@ def parse_subtitle_entry(subs_file):
             end_time_seconds = sum(x * int(t) for x, t in zip([3600, 60, 1, 1/1000], end_time_str.split(":")[0:4]))
 
             # Apply the buffer
-            buffer = 0.5
+            buffer = 0.25
             begin_time_seconds -= buffer
             end_time_seconds += buffer
 

@@ -1,5 +1,6 @@
 import urllib.request, re, sys, os, json
-
+from urllib.error import URLError, HTTPError
+from typing import AnyStr, Optional, List, Tuple, Any
 
 
 
@@ -17,27 +18,21 @@ import urllib.request, re, sys, os, json
 # BASIC CONFIGURATION
 
 # Code of the target language (codes are provided below.) https://en.wikipedia.org/wiki/List_of_ISO_639-2_codes
-targetlang = "ind"
-
-# Languages you already understand
-knownlangs = ["spa", "eng"]
-
-# If a direct translation can't be found, should we use a translation of a translation?
-allow_indirect_translations = True
+target_lang = "deu"
 
 
 
 # ADVANCED CONFIGURATION
 
 # Where all the files will be stored. You may want to set this to be your anki media folder.
-workspace = "generated_files/" + targetlang
+workspace = os.path.join("generated_files", target_lang)
+csv_path = os.path.join(workspace, "import.csv")
 
 # What character should separate fields in the outputted file? You probably want a tab.
 # Do not use a comma, as they appear in the sentences.
 separator = '\t'
 
 # How should we prioritize translations?
-# If you leave it as 0, it will be automatically generated from your above config values.
 # 
 # This is a list of lists of tuples.
 # Each sub-list will have a translation chosen from its first available tuple.
@@ -54,7 +49,12 @@ separator = '\t'
 # translation_priority = [[("eng", True), ("eng", False)], [("spa", True), ("spa", False)]]
 # This will download one english translation and one spanish translation, prioritizing direct translations,
 # assuming they exist.
-translation_priority = [[("eng", True), ("eng", False)], [("spa", True), ("spa", False)]]
+translation_priority = [[("spa", True ),
+                         ("spa", False)],
+                        [("ind", True ),
+                         ("ind", False)],
+                        [("eng", True ),
+                         ("eng", False)]]
 
 
 
@@ -66,34 +66,40 @@ translation_priority = [[("eng", True), ("eng", False)], [("spa", True), ("spa",
 # deu = german
 # por = portuguese
 # fra = french
-# hun = hungarian
+# nld = dutch
 # rus = russian
+# hun = hungarian
+# jpn = japanese
+# pol = polish
 # ber = tamazight
 # fin = finnish
 # epo = esperanto
 # wuu = shanghainese
-# nld = dutch
 # mar = marathi
+# yue = cantonese
+# ind = indonesian
 # cmn = mandarin chinese
-# jpn = japanese
+# ita = italian
 # heb = hebrew
 # lat = latin
 # toki = toki pona
-# pol = polish
+# tha = thai
+# ara = arabic
 # dtp = central Dusun
+# tur = turkish
 # ces = czech
 # ukr = ukrainian
-# kor = korean
-# tha = thai
+# mfa = Melayu Kelantan-Pattani
+# swe = Swedish
 # cat = catalan
 # cbk = chavacano
 # ron = romanian
-# tur = turkish
-# nst = naga (tangshang)
+# nst = naga (tangshan)
+# sat = Santali
 # frr = north frisian
-# shy = tacawit
 # nus = nuer
-# yue = cantonese
+# shy = tacawit
+# arz = Egyptian Arabic
 
 
 
@@ -118,115 +124,192 @@ translation_priority = [[("eng", True), ("eng", False)], [("spa", True), ("spa",
 
 
 
-csv_path = workspace+"/import.csv"
 
 
 
 def main():
-    setupFilesystem()
-    generate_translation_priority()
-    print("Using translation priority " + str(translation_priority))
+    """
+    The main function that orchestrates the entire sentence scraping and processing workflow.
+    """
 
-    global pagescount, already_in_file
+    # Set up the file system to ensure all necessary directories and files are in place
+    setup_filesystem(workspace, csv_path)
 
-    # Keep track of the number of pages in this list.
-    # As soon as we read a page, we will update this to the true value
-    pagescount = 999999
+    # Generate the translation priority list
+    print(f"Using translation priority {translation_priority}")
 
-    # Let's scan the csv file to see if we already have sentences from a prior run which we can now skip
-    already_in_file = open(csv_path).read()
+    # Initialize the page count to a high number which will be updated with the actual count
+    pages_count = 999999
 
+    # Read the CSV file to find which sentences have already been processed
+    with open(csv_path, 'r') as file:
+        already_in_file = file.read()
+
+    # Begin scraping from the first page
     page_number = 1
-    while page_number < pagescount:
-        scrapeOnePage(page_number)
-        page_number+=1
+    while page_number < pages_count:
+        # Scrape a single page and process its sentences
+        scrape_one_page(page_number, already_in_file, pages_count, workspace)
+        
+        # Update the page number for the next iteration
+        page_number += 1
+
+        # Optionally, you can save the last processed page number to a file or database
+        # to resume later from where you left off
 
 
+def scrape_one_page(page_number, already_in_file, pages_count, workspace):
+    """
+    Scrapes a single page of sentences from Tatoeba for a specified language.
 
-def scrapeOnePage(page_number):
-    html = getHtml('https://tatoeba.org/en/audio/index/' + targetlang + "?page=" + str(page_number))
+    :param page_number: The current page number to scrape.
+    :param already_in_file: A set containing sentence numbers already processed.
+    :param pages_count: The total number of pages available for scraping.
+    :param workspace: The directory where audio files are stored.
+    """
+    # Fetch the HTML content of the page
+    html = get_html(f'https://tatoeba.org/en/audio/index/{target_lang}?page={page_number}')
 
-    # how many pages there are in this list? We don't know until we see at least one page.
-    updatePagesCount(html)
+    # Update the total number of pages if not already known
+    update_pages_count(html)
 
-    # A list of links to sentences on this page
-    links = {}
+    # Initialize a dictionary to hold sentence links
+    links_to_process = {}
 
+    # Split the HTML content by the data attribute for sentence ID
     split_html = html.split("data-sentence-id=\"")
-    skippedFiles = 0
-    for splitstring in split_html[1:]:
+    skipped_files_count = 0
 
-        # The number according to this segment of html
-        num = int(re.search('\d+', splitstring).group(0))
+    # Process each HTML segment to extract sentence numbers
+    for split_string in split_html[1:]:
+        # Extract the sentence number
+        sentence_number_match = re.search(r'\d+', split_string)
+        if sentence_number_match:
+            sentence_number = int(sentence_number_match.group(0))
 
-        # Note this sentence as "to-be-downloaded" if we don't already have it.
-        if "\t" + str(num) + "\n" not in already_in_file:
-            links[num] = num
+            # Check if we already have this sentence, if not add to links_to_process
+            if f"\t{sentence_number}\n" not in already_in_file:
+                links_to_process[sentence_number] = sentence_number
+            else:
+                skipped_files_count += 1
+
+    # Log the number of skipped files (sentences)
+    print(f"PAGE {page_number}/{pages_count}: Skipping {skipped_files_count//3} sentences already present in the file.")
+
+    # Process each sentence
+    for sentence_id in links_to_process:
+        add_sentence(str(sentence_id), target_lang, workspace)
+
+
+
+
+# Function to process the provided HTML content and extract usable text
+def process_html_string(html: str) -> str:
+    """
+    Replaces HTML entities with their corresponding characters.
+
+    :param html: The HTML content as a string.
+    :return: The processed string with HTML entities replaced.
+    """
+    processed_html = html.replace("&#039;", "'").replace("&quot;", '"')
+    return processed_html
+
+# Function to extract JSON data for a sentence from the HTML page
+def extract_json_sentence(html: str) -> str:
+    """
+    Extracts the JSON containing sentence and translations from the HTML content using a regular expression.
+
+    :param html: The HTML content as a string.
+    :return: The JSON string extracted from the HTML.
+    """
+    pattern = '<div ng-cloak flex.+?sentence-and-translations.+?ng-init="vm.init\(\[\]\,(.+?}), \[\{'
+    json_data_match = re.findall(pattern, process_html_string(html), re.DOTALL)
+    return json_data_match[0] if json_data_match else ''
+
+# Function to add a sentence and its translations to a file
+def add_sentence(num_str: str, target_lang: str, workspace: str) -> None:
+    """
+    Retrieves a sentence and its translations from Tatoeba, downloads the audio, and appends the data to a file.
+
+    :param num_str: The sentence number as a string.
+    :param target_lang: The target language for audio files.
+    :param workspace: The directory where audio files are stored.
+    """
+    try:
+        # Get the HTML content from Tatoeba
+        html = get_html('https://tatoeba.org/eng/sentences/show/' + num_str)
+        json_sentence = extract_json_sentence(html)
+
+        # If no JSON data is found, skip the sentence
+        if not json_sentence:
+            print(f"  {num_str}: No JSON data found! Skipping...")
+            return
+
+        # Select the best translation based on the priority
+        sentence, translations = select_translation(json_sentence, translation_priority)
+
+        # If no translations are found, skip the sentence
+        if not translations:
+            print(f"  {num_str}: No known-language translations found! Skipping...")
+            return
+        
+        # Handle audio download and storage
+        audiourl = f'https://audio.tatoeba.org/sentences/{target_lang}/{num_str}.mp3'
+        audiopath = os.path.join(workspace, f"{num_str}.mp3")
+        success_text = f"{num_str}: {sentence}"
+
+        if os.path.exists(audiopath):
+            print(f"- {success_text}")
         else:
-            skippedFiles+=1
+            urllib.request.urlretrieve(audiourl, audiopath)
+            print(f"a {success_text}")
 
-    print("PAGE " + str(page_number) + "/" + str(pagescount) + ": Skipping " + str(skippedFiles//3) + " sentences already present in the file.")
-
-    # Now go through and actually process all the sentences
-    for i in links:
-        addSentence(str(i))
-
+        # Append the data to the file
+        append_to_file(num_str, sentence, translations, csv_path)
+    except Exception as e:
+        print(f"An error occurred while processing sentence {num_str}: {e}")
 
 
-# process the link, open it and grab all we need
-def addSentence(numstr):
-    html = getHtml('https://tatoeba.org/eng/sentences/show/' + numstr)
-    json_sentence = re.findall('<div ng-cloak flex.+?sentence-and-translations.+?ng-init="vm.init\(\[\]\,(.+?}), \[\{',procstring(html), re.DOTALL)
-    (sentence, translations) = select_translation(json_sentence)
 
-    if translations == []:
-        print("  " + numstr + ": No known-language translations found! Skipping...")
-        return
+
+def select_translation(json_sentence: str, translation_priority: List[List[Tuple[str, bool]]]) -> Tuple[str, List[str]]:
+    """
+    Selects the best translation based on a priority list.
+
+    :param json_sentence: A JSON string containing the sentence and its translations.
+    :param translation_priority: A nested list of tuples indicating language and direct translation priority.
+    :return: A tuple containing the original sentence and a list of selected translations.
+    """
+    original_sentence = ''
+    selected_translations = []
     
-    # Successfully found translation
-    audiourl = 'https://audio.tatoeba.org/sentences/' + targetlang + '/' + numstr + '.mp3'
-    audiopath = "generated_files/" + targetlang + "/" + numstr + ".mp3"
-    successtext = numstr + ": " + sentence
+    # Parse the JSON data once, as it does not change in the loop.
+    json_data = json.loads(json_sentence)
+    original_sentence = json_data['text']
+    
+    # Iterate over each priority sublist and select the translation.
+    for priority_sublist in translation_priority:
+        translation = select_translation_from_sublist(json_data, priority_sublist)
+        selected_translations.append(translation)
 
-    if os.path.exists(audiopath):
-        print("- " + successtext)
-    else:
-        urllib.request.urlretrieve(audiourl, audiopath)
-        print("a " + successtext)
+    return original_sentence, selected_translations
 
-    appendToFile(numstr, sentence, translations)
+def select_translation_from_sublist(json_data: Any, translation_priority_sublist: List[Tuple[str, bool]]) -> str:
+    """
+    Selects a translation from a given sublist of translation priorities.
 
-
-
-# Prioritizes the translation we use.
-def select_translation(json_sentence):
-    sentence = ''
-    translations = []
-    for translation_priority_sublist in translation_priority:
-        (sentence, translation) = select_translation_from_sublist(json_sentence, translation_priority_sublist)
-        translations.append(translation)
-    print(" ", end="")
-    return (sentence, translations)
-
-
-
-def select_translation_from_sublist(json_sentence, translation_priority_sublist):
-    sentence = ''
-    i = 0
-    print("[", end="")
-    for (known, direct) in translation_priority_sublist:
-        print(known[0], end='')
-        i+=1
-        json_data = json.loads(json_sentence[0])
-        sentence = json_data['text']
+    :param json_data: The parsed JSON data containing the sentence and translations.
+    :param translation_priority_sublist: A list of tuples with language and if direct translation is required.
+    :return: The selected translation text.
+    """
+    for language, requires_direct in translation_priority_sublist:
         for translations in json_data['translations']:
             for translation in translations:
-                direct_translation = 'isDirect' in translation and translation['isDirect']
-                if isinstance(translation['lang'], str) and translation['lang'] == known and (direct == direct_translation):
-                    print("-"*(len(translation_priority_sublist)-i) + "]", end="")
-                    return (sentence, translation['text'])
-    print("-"*(len(translation_priority_sublist)-i) + "]", end="")
-    return (sentence, '')
+                is_direct_translation = translation.get('isDirect', False)
+                if translation['lang'] == language and requires_direct == is_direct_translation:
+                    return translation['text']
+
+    return ''  # Return an empty string if no translation matched the priority list.
 
 
 
@@ -251,61 +334,124 @@ def select_translation_from_sublist(json_sentence, translation_priority_sublist)
 
 # Helper Functions
 
-def generate_translation_priority():
-    global translation_priority
-    if translation_priority == 0:
-        one_sublist = []
-        for known in knownlangs:
-            for permissible_indirect in ([True, False] if allow_indirect_translations else [True]):
-                one_sublist.append((known, permissible_indirect))
-        translation_priority = [one_sublist]
+def setup_filesystem(workspace: str, csv_path: str) -> None:
+    """
+    Sets up the necessary filesystem for operation by ensuring that the workspace and CSV paths exist.
 
-def setupFilesystem():
-    if not os.path.exists(workspace):
-        try:
-            os.mkdir(workspace)
-        except:
-            print("The script couldn't create a temporary workdir called " + workspace)
-            sys.exit(1)
-    if not os.path.exists(csv_path):
-        csv = open(csv_path, "w")
-        csv.close()
+    :param workspace: The directory path for the workspace.
+    :param csv_path: The file path for the CSV.
+    """
 
-def procstring(string):
-    res = string
-    res=res.replace("&#039;","'")
-    res=res.replace("&quot;",'"')
-    return res
+    # Example usage:
+    # setup_filesystem('/path/to/workspace', '/path/to/csv_file.csv')
 
-def updatePagesCount(html):
-    global pagescount
-    if pagescount != 999999:
-        return # We have already computed the real page count
-    pagescount = re.findall('page=(\d+?)\D', html)
-    if pagescount != []:
-        pagescount = 1+max([int(x) for x in pagescount])
-    else:
-        pagescount = 1 # there is no pagination
-
-def getHtml(url):
-    resp = urllib.request.urlopen(url)
-    if resp.getcode() != 200:
-        print("Error response for search")
+    try:
+        os.makedirs(workspace, exist_ok=True)
+    except Exception as e:
+        print(f"The script couldn't create a temporary workdir called {workspace}. Error: {e}")
         sys.exit(1)
-    html = resp.read().decode('utf-8')
-    resp.close()
-    return html
 
-def appendToFile(num, sentence, translation_list):
-    csv = open(csv_path, "a")
+    # Ensure the CSV file exists
+    if not os.path.exists(csv_path):
+        with open(csv_path, "w") as csv_file:
+            # The file is created and closed immediately as it's opened in write mode.
+            pass
 
-    line = '[sound:' + num + ".mp3]" + separator + sentence + separator;
-    for t in translation_list:
-        line += t + separator
-    line += num + "\n"
 
-    csv.write(line)
-    csv.close()
+def process_string(original_string: str) -> str:
+    """
+    Processes an HTML-encoded string by converting specific HTML entities to their respective characters.
+
+    :param original_string: The string containing HTML entities.
+    :return: A new string with HTML entities replaced by their respective characters.
+    """
+    result_string = original_string
+    result_string = result_string.replace("&#039;", "'")
+    result_string = result_string.replace("&quot;", '"')
+    return result_string
+
+def update_pages_count(html: str, current_pages_count: Optional[int] = 999999) -> int:
+    """
+    Updates the number of pages by finding all occurrences of 'page=x' in the HTML, where x is a number.
+
+    :param html: The HTML content as a string.
+    :param current_pages_count: The current pages count, if already known. Defaults to 999999.
+    :return: The updated pages count.
+    """
+
+    # Example usage:
+    # html_content = "<html>...pagination...page=3...</html>"
+    # pages_count = update_pages_count(html_content)
+    # print(pages_count)
+
+    # If we already have the real pages count, return it.
+    if current_pages_count != 999999:
+        return current_pages_count
+    
+    # Find all 'page=x' occurrences and extract the number 'x'.
+    found_pages = re.findall(r'page=(\d+?)\D', html)
+    
+    # If we found any page numbers, calculate the max and add 1.
+    if found_pages:
+        # Convert all found page numbers to integers and find the max.
+        max_page = 1 + max(map(int, found_pages))
+        return max_page
+    else:
+        # Default to 1 if no pagination is found.
+        return 1
+
+
+
+def get_html(url: AnyStr) -> AnyStr:
+    """
+    Fetches the HTML content from a given URL.
+
+    :param url: The URL from which to fetch the HTML content.
+    :return: A string containing the decoded HTML content.
+    :raises HTTPError: An error from the server if the response code is not 200.
+    :raises URLError: A failure to reach the server.
+    """
+
+    # Example usage:
+    # print(get_html("http://example.com"))
+
+    try:
+        with urllib.request.urlopen(url) as response:
+            if response.getcode() != 200:
+                raise HTTPError(url, response.getcode(), "Error response for search", response.headers, None)
+            html_content = response.read().decode('utf-8')
+            return html_content
+    except HTTPError as e:
+        print(f'HTTP error occurred: {e.code} - {e.reason}')
+        raise
+    except URLError as e:
+        print(f'Failed to reach the server: {e.reason}')
+        raise
+
+
+
+
+def append_to_file(num: str, sentence: str, translation_list: list, csv_path: str) -> None:
+    """
+    Appends a line to a CSV file with a specific format.
+
+    :param num: The identifier number, which is also used for the mp3 filename.
+    :param sentence: The sentence to be recorded in the file.
+    :param translation_list: A list of translations to be appended after the sentence.
+    :param csv_path: The path to the CSV file.
+    """
+
+    # Example usage
+    # append_to_file('001', 'Hello, world!', ['Hola, mundo!', 'Bonjour, monde!'], 'translations.csv')
+
+    # Constructing the line to write to the CSV file
+    line_elements = [f'[sound:{num}.mp3]'] + [sentence] + translation_list + [num]
+    line = separator.join(line_elements) + "\n"
+
+    # Writing the constructed line to the CSV file
+    with open(csv_path, "a") as csv_file:
+        csv_file.write(line)
+
 
 
 

@@ -1,26 +1,30 @@
 # Reminder: If it's not worth downloading in full resolution, it's probably not worth watching
 #
-https://www.youtube.com/playlist?list=PLwYL9_SRAk8E-dYX8ioR3tt91hcd5bxV0	/media/swap/primary/Toki Pona/jan Telakoman/toki lili lon ma kasi/%(title)s.%(ext)s
-https://www.youtube.com/playlist?list=PLwYL9_SRAk8EXSZPSTm9lm2kD_Z1RzUgm	/media/swap/primary/Toki Pona/jan Telakoman/opetp/%(title)s.%(ext)s
-https://www.youtube.com/@Quimiayudas	/media/swap/primary/Spanish/Youtube/Quimiayudas/%(title)s-%(id)s.%(ext)s
-# https://www.youtube.com/@curiosamente/videos	/media/swap/primary/Spanish/Youtube/Curiosamente/%(title)s-%(id)s.%(ext)s
-https://www.youtube.com/@JapaneseFolkSongs/videos	/media/swap/primary/Japanese/JapaneseFolkSongs/%(title)s.%(ext)s	-x
-https://www.youtube.com/@BelajarSaham/videos	/media/swap/primary/Indonesian/Audio/BelajarSaham/%(title)s.%(ext)s	-x
-https://www.youtube.com/@BumiPeta/videos	/media/swap/primary/Indonesian/BumiPeta/%(title)s.%(ext)s
-https://www.youtube.com/@dimabelle12/videos	/media/swap/primary/Spanish/Youtube/Dimabelle/%(title)s.%(ext)s
-https://www.youtube.com/@historiaparatontosoficial/videos	/media/swap/primary/Spanish/Youtube/HistoriaParaTontos/%(title)s.%(ext)s
-https://www.youtube.com/playlist?list=PLHxhbDbFTPcOXfl6-skK-onMnHAAJAmf6	/media/swap/primary/Spanish/Lenguas_Indigenas/Quechua/Cuentos/%(title)s.%(ext)s	-x
-https://www.youtube.com/c/3Blue1BrownJapan/videos	/media/swap/primary/Japanese/3Blue1BrownJapan/%(title)s.%(ext)s
-https://www.youtube.com/c/ViridiVisions/videos	/media/swap/primary/Spanish/Youtube/ViridiVisions/%(title)s.%(ext)s
-https://www.youtube.com/channel/UCNaxJ8F4E93MeqznsgB1mQA/videos	/media/swap/primary/Japanese/女流棋士・飛田早紀の囲碁チャンネル/%(title)s.%(ext)s
-https://www.youtube.com/c/minutodefisica/videos	/media/swap/primary/Spanish/Youtube/MinutoDeFisica/%(title)s.%(ext)s
-https://www.youtube.com/c/Veritasiumenespañol/videos	/media/swap/primary/Spanish/Youtube/Veritasium/%(title)s.%(ext)s
-https://www.youtube.com/@podcastcosasdeinternet/videos	/media/swap/primary/Spanish/Podcasts/cosasdeinternet/%(title)s.%(ext)s	-x
-# https://www.youtube.com/@suasi_shacho/videos	/media/swap/primary/Japanese/FootGuy/%(title)s.%(ext)s	-x
-# https://www.youtube.com/@Navarretesshow1007/videos	/media/swap/primary/Spanish/Youtube/Navarretes/%(title)s.%(ext)s
-https://www.youtube.com/@honesthourpodcast6112/videos	/media/swap/primary/Chinese/Youtube/honesthour/%(title)s.%(ext)s	-x
-https://www.youtube.com/@Kraut_the_Parrot/videos	/media/swap/primary/Other/English/Kraut/%(title)s.%(ext)s
-https://www.youtube.com/@GenioraSayaBisa	/media/swap/primary/Indonesian/SayaBisa/%(title)s.%(ext)s
-https://www.youtube.com/@AcademiaLibre	/media/swap/primary/Spanish/Youtube/AcademiaLibre/%(title)s.%(ext)s
+https://www.youtube.com/@MZNetwork	/media/swap/primary/Spanish/Youtube/MZNetwork/%(upload_date>%Y-%m-%d)s - %(title)s.%(ext)s
+https://www.youtube.com/playlist?list=PLwYL9_SRAk8E-dYX8ioR3tt91hcd5bxV0	/media/swap/primary/Toki Pona/jan Telakoman/toki lili lon ma kasi/%(upload_date>%Y-%m-%d)s - %(title)s.%(ext)s
+https://www.youtube.com/playlist?list=PLwYL9_SRAk8EXSZPSTm9lm2kD_Z1RzUgm	/media/swap/primary/Toki Pona/jan Telakoman/opetp/%(upload_date>%Y-%m-%d)s - %(title)s.%(ext)s
+https://www.youtube.com/@Quimiayudas	/media/swap/primary/Spanish/Youtube/Quimiayudas/%(upload_date>%Y-%m-%d)s - %(title)s.%(ext)s
+# https://www.youtube.com/@curiosamente/videos	/media/swap/primary/Spanish/Youtube/Curiosamente/%(upload_date>%Y-%m-%d)s - %(title)s.%(ext)s
+https://www.youtube.com/@JapaneseFolkSongs/videos	/media/swap/primary/Japanese/JapaneseFolkSongs/%(upload_date>%Y-%m-%d)s - %(title)s.%(ext)s	-x
+https://www.youtube.com/@BelajarSaham/videos	/media/swap/primary/Indonesian/Audio/BelajarSaham/%(upload_date>%Y-%m-%d)s - %(title)s.%(ext)s	-x
+https://www.youtube.com/@BumiPeta/videos	/media/swap/primary/Indonesian/BumiPeta/%(upload_date>%Y-%m-%d)s - %(title)s.%(ext)s
+https://www.youtube.com/@dimabelle12/videos	/media/swap/primary/Spanish/Youtube/Dimabelle/%(upload_date>%Y-%m-%d)s - %(title)s.%(ext)s
+https://www.youtube.com/@historiaparatontosoficial/videos	/media/swap/primary/Spanish/Youtube/HistoriaParaTontos/%(upload_date>%Y-%m-%d)s - %(title)s.%(ext)s
+# https://www.youtube.com/playlist?list=PLHxhbDbFTPcOXfl6-skK-onMnHAAJAmf6	/media/swap/primary/Spanish/Lenguas_Indigenas/Quechua/Cuentos/%(upload_date>%Y-%m-%d)s - %(title)s.%(ext)s	-x
+https://www.youtube.com/c/3Blue1BrownJapan/videos	/media/swap/primary/Japanese/3Blue1BrownJapan/%(upload_date>%Y-%m-%d)s - %(title)s.%(ext)s
+https://www.youtube.com/c/ViridiVisions/videos	/media/swap/primary/Spanish/Youtube/ViridiVisions/%(upload_date>%Y-%m-%d)s - %(title)s.%(ext)s
+https://www.youtube.com/channel/UCNaxJ8F4E93MeqznsgB1mQA/videos	/media/swap/primary/Japanese/女流棋士・飛田早紀の囲碁チャンネル/%(upload_date>%Y-%m-%d)s - %(title)s.%(ext)s
+https://www.youtube.com/c/minutodefisica/videos	/media/swap/primary/Spanish/Youtube/MinutoDeFisica/%(upload_date>%Y-%m-%d)s - %(title)s.%(ext)s
+https://www.youtube.com/c/Veritasiumenespañol/videos	/media/swap/primary/Spanish/Youtube/Veritasium/%(upload_date>%Y-%m-%d)s - %(title)s.%(ext)s
+https://www.youtube.com/@podcastcosasdeinternet/videos	/media/swap/primary/Spanish/Podcasts/cosasdeinternet/%(upload_date>%Y-%m-%d)s - %(title)s.%(ext)s	-x
+# https://www.youtube.com/@suasi_shacho/videos	/media/swap/primary/Japanese/FootGuy/%(upload_date>%Y-%m-%d)s - %(title)s.%(ext)s	-x
+# https://www.youtube.com/@Navarretesshow1007/videos	/media/swap/primary/Spanish/Youtube/Navarretes/%(upload_date>%Y-%m-%d)s - %(title)s.%(ext)s
+https://www.youtube.com/@honesthourpodcast6112/videos	/media/swap/primary/Chinese/Youtube/honesthour/%(upload_date>%Y-%m-%d)s - %(title)s.%(ext)s	-x
+https://www.youtube.com/@Kraut_the_Parrot/videos	/media/swap/primary/Other/English/Kraut/%(upload_date>%Y-%m-%d)s - %(title)s.%(ext)s
+https://www.youtube.com/@GenioraSayaBisa	/media/swap/primary/Indonesian/SayaBisa/%(upload_date>%Y-%m-%d)s - %(title)s.%(ext)s
+https://www.youtube.com/@AcademiaLibre	/media/swap/primary/Spanish/Youtube/AcademiaLibre/%(upload_date>%Y-%m-%d)s - %(title)s.%(ext)s
+https://www.youtube.com/@BookboxHindi/videos	/media/swap/primary/Other/Indian Langs/BookboxHindi/%(upload_date>%Y-%m-%d)s - %(title)s.%(ext)s
+https://www.youtube.com/@MIGALA666/videos	/media/swap/primary/Spanish/Youtube/Migala/videos/%(upload_date>%Y-%m-%d)s - %(title)s.%(ext)s
+https://www.youtube.com/@MIGALA666/shorts	/media/swap/primary/Spanish/Youtube/Migala/shorts/%(upload_date>%Y-%m-%d)s - %(title)s.%(ext)s
 # needs a trailing newline
 # Multi-audio channels? Mark rober?

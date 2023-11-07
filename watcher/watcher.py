@@ -127,14 +127,21 @@ def print_stats():
     print()
 
 
-
 def search_videos_from_list(shuffle):
-    for video in TO_WATCH_LIST.copy():
+    while True:
+        video = TO_WATCH_LIST[0]
+
         os.system('clear')
         print_stats()
         play_video(video)
-        input("Enter to mark complete the video")
-        mark_as_watched(video)
+
+        # Prompt user to mark video as watched
+        choice = input("Mark this video as watched and continue? (Y/n): ").lower().strip()
+        if choice == 'y' or choice == '':
+            mark_as_watched(video)
+        else:
+            exit(0)
+
 
 def check_working_directory():
 

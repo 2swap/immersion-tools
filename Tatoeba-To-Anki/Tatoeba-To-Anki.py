@@ -15,18 +15,8 @@ from typing import AnyStr, Optional, List, Tuple, Any
 
 
 
-# BASIC CONFIGURATION
-
-# Code of the target language (codes are provided below.) https://en.wikipedia.org/wiki/List_of_ISO_639-2_codes
-target_lang = "deu"
-
-
 
 # ADVANCED CONFIGURATION
-
-# Where all the files will be stored. You may want to set this to be your anki media folder.
-workspace = os.path.join("generated_files", target_lang)
-csv_path = os.path.join(workspace, "import.csv")
 
 # What character should separate fields in the outputted file? You probably want a tab.
 # Do not use a comma, as they appear in the sentences.
@@ -133,7 +123,7 @@ def main():
     """
 
     # Set up the file system to ensure all necessary directories and files are in place
-    setup_filesystem(workspace, csv_path)
+    setup_filesystem(workspace, tsv_path)
 
     # Generate the translation priority list
     print(f"Using translation priority {translation_priority}")
@@ -141,8 +131,8 @@ def main():
     # Initialize the page count to a high number which will be updated with the actual count
     pages_count = 999999
 
-    # Read the CSV file to find which sentences have already been processed
-    with open(csv_path, 'r') as file:
+    # Read the TSV file to find which sentences have already been processed
+    with open(tsv_path, 'r') as file:
         already_in_file = file.read()
 
     # Begin scraping from the first page
@@ -198,7 +188,7 @@ def scrape_one_page(page_number, already_in_file, pages_count, workspace):
 
     # Process each sentence
     for sentence_id in links_to_process:
-        add_sentence(str(sentence_id), target_lang, workspace)
+        add_sentence(str(sentence_id))
 
 
 
@@ -227,13 +217,11 @@ def extract_json_sentence(html: str) -> str:
     return json_data_match[0] if json_data_match else ''
 
 # Function to add a sentence and its translations to a file
-def add_sentence(num_str: str, target_lang: str, workspace: str) -> None:
+def add_sentence(num_str: str) -> None:
     """
     Retrieves a sentence and its translations from Tatoeba, downloads the audio, and appends the data to a file.
 
     :param num_str: The sentence number as a string.
-    :param target_lang: The target language for audio files.
-    :param workspace: The directory where audio files are stored.
     """
     try:
         # Get the HTML content from Tatoeba
@@ -265,7 +253,7 @@ def add_sentence(num_str: str, target_lang: str, workspace: str) -> None:
             print(f"a {success_text}")
 
         # Append the data to the file
-        append_to_file(num_str, sentence, translations, csv_path)
+        append_to_file(num_str, sentence, translations, tsv_path)
     except Exception as e:
         print(f"An error occurred while processing sentence {num_str}: {e}")
 
@@ -334,16 +322,16 @@ def select_translation_from_sublist(json_data: Any, translation_priority_sublist
 
 # Helper Functions
 
-def setup_filesystem(workspace: str, csv_path: str) -> None:
+def setup_filesystem(workspace: str, tsv_path: str) -> None:
     """
-    Sets up the necessary filesystem for operation by ensuring that the workspace and CSV paths exist.
+    Sets up the necessary filesystem for operation by ensuring that the workspace and TSV paths exist.
 
     :param workspace: The directory path for the workspace.
-    :param csv_path: The file path for the CSV.
+    :param tsv_path: The file path for the TSV.
     """
 
     # Example usage:
-    # setup_filesystem('/path/to/workspace', '/path/to/csv_file.csv')
+    # setup_filesystem('/path/to/workspace', '/path/to/tsv_file.tsv')
 
     try:
         os.makedirs(workspace, exist_ok=True)
@@ -351,9 +339,9 @@ def setup_filesystem(workspace: str, csv_path: str) -> None:
         print(f"The script couldn't create a temporary workdir called {workspace}. Error: {e}")
         sys.exit(1)
 
-    # Ensure the CSV file exists
-    if not os.path.exists(csv_path):
-        with open(csv_path, "w") as csv_file:
+    # Ensure the TSV file exists
+    if not os.path.exists(tsv_path):
+        with open(tsv_path, "w") as tsv_file:
             # The file is created and closed immediately as it's opened in write mode.
             pass
 
@@ -431,26 +419,26 @@ def get_html(url: AnyStr) -> AnyStr:
 
 
 
-def append_to_file(num: str, sentence: str, translation_list: list, csv_path: str) -> None:
+def append_to_file(num: str, sentence: str, translation_list: list, tsv_path: str) -> None:
     """
-    Appends a line to a CSV file with a specific format.
+    Appends a line to a TSV file with a specific format.
 
     :param num: The identifier number, which is also used for the mp3 filename.
     :param sentence: The sentence to be recorded in the file.
     :param translation_list: A list of translations to be appended after the sentence.
-    :param csv_path: The path to the CSV file.
+    :param tsv_path: The path to the TSV file.
     """
 
     # Example usage
-    # append_to_file('001', 'Hello, world!', ['Hola, mundo!', 'Bonjour, monde!'], 'translations.csv')
+    # append_to_file('001', 'Hello, world!', ['Hola, mundo!', 'Bonjour, monde!'], 'translations.tsv')
 
-    # Constructing the line to write to the CSV file
+    # Constructing the line to write to the TSV file
     line_elements = [f'[sound:{num}.mp3]'] + [sentence] + translation_list + [num]
     line = separator.join(line_elements) + "\n"
 
-    # Writing the constructed line to the CSV file
-    with open(csv_path, "a") as csv_file:
-        csv_file.write(line)
+    # Writing the constructed line to the TSV file
+    with open(tsv_path, "a") as tsv_file:
+        tsv_file.write(line)
 
 
 
@@ -462,9 +450,18 @@ def append_to_file(num: str, sentence: str, translation_list: list, csv_path: st
 
 
 
-
-
+def setup():
+    global target_lang, workspace, tsv_path
+    target_lang = sys.argv[1]
+    workspace = os.path.join("generated_files", target_lang)
+    tsv_path = os.path.join(workspace, "import.tsv")
 
 
 if __name__ == "__main__":
-    main()
+    # Check if at least one command line argument is provided
+    print(sys.argv)
+    if len(sys.argv) > 1:
+        setup()
+        main()
+    else:
+        print("No language code provided.")

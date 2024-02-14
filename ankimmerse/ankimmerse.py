@@ -7,7 +7,7 @@ import readline
 
 def make_project_folder():
     project_name = input("Select a project name. This will be appended to all of the generated media files to group them: ")
-    media_prefix = f"ankimmerse_{project_name}"
+    media_prefix = project_name
     output_folder_path = os.path.join(os.getcwd(), media_prefix)
     if os.path.exists(output_folder_path):
         print("Seems this project already exists! Continuing where we left off...")
@@ -89,7 +89,7 @@ def generate_srt_with_sound_references(subs_file, stream_index, video_file, medi
             begin_time_srt = convert_to_srt_time(begin_time_float)
             end_time_srt = convert_to_srt_time(end_time_float)
             audio_path = os.path.join(output_folder_path, "media", audio_files[i])
-            subs.write(f"{i + 1}\n{begin_time_srt} --> {end_time_srt}\n[sound:{audio_files[i]}]\n\n")
+            subs.write(f"{i + 1}\n{begin_time_srt} --> {end_time_srt}\n{audio_files[i]}\n\n")
             if not os.path.exists(audio_path):
                 cmd = ["ffmpeg", "-nostdin", "-i", video_file, "-map", f"0:{audio_stream}", "-ss", begin_time_srt.replace(",", "."), "-to", end_time_srt.replace(",", "."), audio_path]
                 subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
@@ -155,14 +155,14 @@ def get_subtitles(video_file, output_folder_path, media_prefix):
     clean_subs(subs)
 
     # Prompt user
-    user_response = input(f"\nYou have the option to remove extraneous subtitles by editing the subtitle file.\nDo you want to open it with Sublime Text for editing? (Y/n): ")
+    user_response = input(f"\nYou have the option to remove extraneous subtitles by editing the subtitle file.\nDo you want to open it with vim for editing? (Y/n): ")
 
     if user_response.lower() != 'n':
         try:
-            subprocess.run(['subl', subs], check=True)
+            subprocess.run(['vim', subs], check=True)
             input("Press enter when done editing.")
         except (subprocess.CalledProcessError, FileNotFoundError):
-            input(f"Failed to open {subs} with Sublime Text. Please edit the file manually and press enter to continue.")
+            input(f"Failed to open {subs} with vim. Please edit the file manually and press enter to continue.")
     else:
         print("Proceeding with unedited subtitles.")
 
@@ -195,7 +195,8 @@ def get_audio(video_file, output_folder_path):
         print("Error occurred while running ffprobe/ffmpeg for audio extraction:")
         print(e.stderr)
 
-def parse_subtitle_entry(subs_file):
+def parse_subtitle_entry(subs_file, buffer):
+
     try:
         entry_lines = []
 
@@ -231,8 +232,6 @@ def parse_subtitle_entry(subs_file):
             begin_time_seconds = sum(x * int(t) for x, t in zip([3600, 60, 1, 1/1000], begin_time_str.split(":")[0:4]))
             end_time_seconds = sum(x * int(t) for x, t in zip([3600, 60, 1, 1/1000], end_time_str.split(":")[0:4]))
 
-            # Apply the buffer
-            buffer = 0.25
             begin_time_seconds -= buffer
             end_time_seconds += buffer
 
@@ -257,9 +256,25 @@ def make_deck(video_file, output_folder_path, media_prefix):
     import_path = os.path.join(output_folder_path, "import.tsv")
     subs_path = os.path.join(output_folder_path, "subs.srt")
     full_audio_path = os.path.join(output_folder_path, "audio.mp3")
+
+
+    while True:
+        buffer_input = input("Enter a value for buffer (default is 0.5): ")
+
+        try:
+            if not buffer_input:
+                buffer = 0.5
+            else:
+                buffer = float(buffer_input)
+            print("Buffer:", buffer)
+            break  # Exit the loop if input and conversion are successful
+
+        except ValueError:
+            print("Error: Please enter a valid numeric value for buffer.")
+
     with open(subs_path, "r") as subs_file, open(import_path, "w") as import_file_handle:
         while True:
-            srt_data = parse_subtitle_entry(subs_file)
+            srt_data = parse_subtitle_entry(subs_file, buffer)
             if srt_data == "EOF":
                 print("Done!\n")
                 return
@@ -290,7 +305,7 @@ def make_deck(video_file, output_folder_path, media_prefix):
                 subprocess.run(["ffmpeg", "-nostdin", "-ss", end_time, "-i", video_file, "-vf", image_scale_filter, "-vframes", "1", "-q:v", "2", image_end_path], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
 
             # Write the line as an Anki card
-            import_file_handle.write(f"[sound:{audio_name}]\t{dialogue}\t<img src='{image_begin_name}'>\t<img src='{image_end_name}'>\n")
+            import_file_handle.write(f"{audio_name}\t{dialogue}\t<img src='{image_begin_name}'>\t<img src='{image_end_name}'>\n")
 
 def move_files_to_anki_media(output_folder_path):
     answer = input("Do you want to copy all files from anki/data/ to ~/anki_media/? (y/n): ").lower()

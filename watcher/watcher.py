@@ -6,22 +6,33 @@ import argparse
 WATCHED_FILE = "watched_videos.txt"
 BOOKMARK_FILE = "bookmark.txt"
 VIDEO_EXTENSIONS = ['.mp4', '.mkv', '.avi', '.webm']
+AUDIO_EXTENSIONS = ['.wav', '.ogg', '.mp3', '.flac']
+EXTENSIONS = []
 
 TO_WATCH_LIST = []
 WATCHED_IN_BOOKMARK_LIST = []
 WATCHED_OUTSIDE_BOOKMARK_LIST = []
+
 DIRECTORIES = []
 
 
-def load_directories_from_bookmark():
+def load_directories_from_bookmark(start_directory=None):
     """Loading directories from the bookmark..."""
-
     global DIRECTORIES
     assert os.path.exists(BOOKMARK_FILE), f"The bookmark file '{BOOKMARK_FILE}' does not exist."
     
     with open(BOOKMARK_FILE, 'r') as f:
-        # Ignore lines starting with # and strip whitespace
         DIRECTORIES = [line.strip() for line in f.readlines() if not line.startswith('#')]
+    assert(DIRECTORIES)
+
+    # Move specified start directory to front, if it exists
+    if start_directory:
+        print(start_directory)
+        for directory in DIRECTORIES.copy():
+            if start_directory not in directory:
+                DIRECTORIES.remove(directory)
+    print("aaa")
+    print(DIRECTORIES)
 
 
 def load_videos():
@@ -55,7 +66,7 @@ def load_videos_from_directory(directory):
         # Sort files alphanumerically
         sorted_files = sorted(files)
         for file in sorted_files:
-            if any(file.endswith(ext) for ext in VIDEO_EXTENSIONS):
+            if any(file.endswith(ext) for ext in EXTENSIONS):
                 videos.append(os.path.join(root, file))
     return videos
 
@@ -94,7 +105,7 @@ def print_stats():
     completely_watched_dirs = []
 
     for directory in DIRECTORIES:
-        dir_name = directory.split('/')[-1]
+        dir_name = directory.rstrip('/').split('/')[-1]
         dir_videos = set(load_videos_from_directory(directory))
         watched_in_dir = len([video for video in WATCHED_IN_BOOKMARK_LIST if video in dir_videos])
         total_in_dir = len(dir_videos)
@@ -127,20 +138,34 @@ def print_stats():
     print()
 
 
-def search_videos_from_list(shuffle):
+def search_videos_from_list():
     while True:
+        if args.shuffle:
+            random.shuffle(TO_WATCH_LIST)
         video = TO_WATCH_LIST[0]
 
-        os.system('clear')
         print_stats()
         play_video(video)
 
-        # Prompt user to mark video as watched
-        choice = input("Mark this video as watched and continue? (Y/n): ").lower().strip()
-        if choice == 'y' or choice == '':
-            mark_as_watched(video)
-        else:
-            exit(0)
+        if args.listen:
+            continue
+        while True:
+            choice = input("Choose an option:\n"
+                           "1. Mark this video as watched and continue (y)\n"
+                           "2. Mark as watched and exit (e)\n"
+                           "3. Do not mark as watched and exit (n)\n"
+                           "Enter your choice (Y/e/n): ").lower().strip()
+
+            if choice in ['y', '']:
+                mark_as_watched(video)
+                break
+            elif choice == 'e':
+                mark_as_watched(video)
+                exit(0)
+            elif choice == 'n':
+                exit(0)
+            else:
+                print("Invalid response. Please enter Y, E, or N.")
 
 
 def check_working_directory():
@@ -152,24 +177,31 @@ def check_working_directory():
 
     # Check and create BOOKMARK_FILE if it doesn't exist
     if not os.path.exists(BOOKMARK_FILE):
-        print(f"Please provide the paths to the video directories in the '{BOOKMARK_FILE}' file.")
-        with open(BOOKMARK_FILE, 'w') as f:  # This creates an empty file
+        user_input = input(f"The file '{BOOKMARK_FILE}' does not exist. Do you want to create it with empty content? (y/N): ")
+
+        if user_input.lower() != 'y':
+            print("Exiting without creating the file.")
+            exit()
+
+        with open(BOOKMARK_FILE, 'w') as f:
+            # This creates an empty file
             pass
-        exit()
 
 
-def main(shuffle=False):
+def main(start_directory=None):
+    global EXTENSIONS
+    os.system('clear')
+    EXTENSIONS = AUDIO_EXTENSIONS if args.listen else VIDEO_EXTENSIONS
     check_working_directory()
 
+    load_directories_from_bookmark(start_directory)
     load_videos()
 
     if(args.stats):
         print_stats()
         exit()
 
-    if shuffle:
-        random.shuffle(TO_WATCH_LIST)
-    search_videos_from_list(shuffle)
+    search_videos_from_list()
 
 
 if __name__ == '__main__':
@@ -177,7 +209,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Play videos from a folder.")
     parser.add_argument("-s", "--shuffle", help="shuffle videos"              , action="store_true")
     parser.add_argument("-x", "--stats"  , help="show lists of watched videos", action="store_true")
+    parser.add_argument("-n", "--start-directory", help="start with this directory", type=str)
+    parser.add_argument("-l", "--listen", help="Audio files instead of video files", action="store_true")
     args = parser.parse_args()
 
-    load_directories_from_bookmark()
-    main(shuffle=args.shuffle)
+    main(start_directory=args.start_directory)

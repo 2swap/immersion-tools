@@ -1,9 +1,19 @@
 import os
+import time
 import subprocess
 import shutil
 import json
 import re
 import readline
+import glob
+from openai import OpenAI
+from tkinter import Tk
+from tkinter.filedialog import askopenfilename, asksaveasfilename, askdirectory
+
+keyFile = open('/home/swap/openaikey', 'r')
+apikey = keyFile.readline().rstrip()
+keyFile.close()
+client = OpenAI(api_key=apikey)
 
 def make_project_folder():
     project_name = input("Select a project name. This will be appended to all of the generated media files to group them: ")
@@ -18,15 +28,23 @@ def make_project_folder():
         os.makedirs(media_directory)
     return output_folder_path, media_prefix
 
-def request_path_check_valid(prompt):
-    path = None
-    while True:
-        path = input(prompt).replace("\\", "").strip()
-        if os.path.exists(path):
-            return path
-        else:
-            print("Error: The specified file does not exist.")
-    return path
+def request_path_check_valid(prompt, initialdir):
+    # Initialize the Tkinter root
+    root = Tk()
+    # Hide the root window
+    root.withdraw()
+    # Open the file dialog
+    path = askopenfilename(title=prompt, initialdir=initialdir)
+    # The user closed the dialog window or clicked cancel
+    if not path:
+        print("No file selected.")
+        return None
+    # Check if the selected file exists
+    if os.path.exists(path):
+        return path
+    else:
+        print("Error: The specified file does not exist.")
+        return None
 
 def get_video(output_folder_path):
     video_path_file = os.path.join(output_folder_path, "video_path.txt")
@@ -38,7 +56,36 @@ def get_video(output_folder_path):
             if os.path.exists(video_path):
                 print("Using video path from the file:", video_path)
                 return video_path
-    video_path = request_path_check_valid("Enter the video file path: ")
+
+    choice = "none"
+    while choice not in ['e','y']:
+        choice = input("Would you like to use an existing video or a YouTube video? Type 'E' or 'Y': ").strip().lower()
+        if choice in ['e','y']:
+            break
+        print("Option not recognized! Try again.")
+
+    output_path = None
+    if choice == 'y':
+        youtube_link = input("Enter the YouTube video link: ").strip()
+        # Initialize the Tkinter root
+        root = Tk()
+        # Hide the root window
+        root.withdraw()
+        # Prompt for output path using file dialog
+        output_path = askdirectory(
+            title="Save the YouTube video as...",
+            initialdir=output_folder_path,
+        )
+        if not output_path:
+            print("No output path selected.")
+            return None
+        # Run yt-dlp command to download the video
+        subprocess.run(["yt-dlp", "--all-subs", "--download-archive", "/media/swap/primary/immersion-tools/yt-sync/archive.txt", "--cookies-from-browser", "chrome", "-o", os.path.join(output_path, "%(upload_date>%Y-%m-%d)s - %(title)s.%(ext)s"), youtube_link])
+        output_path = askdirectory(
+            title="Save the YouTube video as...",
+            initialdir=output_path,
+        )
+    video_path = request_path_check_valid("Enter the video file path: ", output_path)
     with open(video_path_file, 'w') as file:
         file.write(video_path)
     return video_path
@@ -105,31 +152,60 @@ def get_subtitles(video_file, output_folder_path, media_prefix):
         subtitles_data = json.loads(ffprobe_subtitles_output)
         print("\n\n\nSubtitle Streams:")
 
-        for stream in subtitles_data.get("streams", []):
-            index = stream.get("index")
-            codec_name = stream.get("codec_name")
-            language = stream["tags"].get("language")
-            warning = " -> This subtitle appears to be bitmap-based. A translation audio stream will be required. Choose a different stream if possible." if codec_name == "dvd_subtitle" else ""
-            print(f"Index: {index}, Codec Name: {codec_name}, Language: {language} {warning}")
+        if not subtitles_data.get("streams"):
+            print("No subtitle streams found in the video. Falling back to using an external subtitle file.")
+            use_subs_file = True
+        else:
+            for stream in subtitles_data.get("streams", []):
+                index = stream.get("index")
+                codec_name = stream.get("codec_name")
+                language = stream["tags"].get("language")
+                warning = " -> This subtitle appears to be bitmap-based. A translation audio stream will be required. Choose a different stream if possible." if codec_name == "dvd_subtitle" else ""
+                print(f"Index: {index}, Codec Name: {codec_name}, Language: {language} {warning}")
     except subprocess.CalledProcessError as e:
         print("Error occurred while running ffprobe for subtitle streams:")
         print(e.stderr)
         return
 
-    use_subs_file = None
-    while use_subs_file == None:
-        subs_type_char = input("Type S if you would like to use an internal subtitle stream (i.e. if you see an appropriate stream above) or F if you would like to use an external subtitle file: ").lower()
-        if subs_type_char == 'f':
-            use_subs_file = True
-        elif subs_type_char == 's':
-            use_subs_file = False
-        else:
-            print("Option not recognized! Try again.")
+    if use_subs_file is None:
+        while use_subs_file is None:
+            subs_type_char = input("Type S if you would like to use an internal subtitle stream (i.e. if you see an appropriate stream above) or F if you would like to use an external subtitle file: ").lower()
+            if subs_type_char == 'f':
+                use_subs_file = True
+            elif subs_type_char == 's':
+                use_subs_file = False
+            else:
+                print("Option not recognized! Try again.")
 
     if use_subs_file:
-        subs_in = request_path_check_valid("\nUsing external subs file. Enter the subtitle file path: ")
+        # Search for subtitle files in the same directory as the video file
+        video_dir = os.path.dirname(video_file)
+        video_filename_without_ext = os.path.splitext(os.path.basename(video_file))[0]
+        subtitle_files = glob.glob(os.path.join(video_dir, video_filename_without_ext + ".*.vtt"))
+        subtitle_files.extend(glob.glob(os.path.join(video_dir, video_filename_without_ext + ".*.srt")))
+
+        chosen_file = None
+        if subtitle_files:
+            print("Found the following subtitle files:")
+            for i, subtitle_file in enumerate(subtitle_files, 1):
+                print(f"{i}. {subtitle_file}")
+            print(f"{len(subtitle_files)+1}. None of the above - I'd like to use another external file.")
+
+            choice = "not a real choice"
+            while not (choice.isdigit() and 1 <= int(choice) <= len(subtitle_files) + 1):
+                choice = input("Select a subtitle file to use (number): ")
+
+            if choice == len(subtitle_files)+1:
+                print(f"Using an alternative subtitle file.")
+            else:
+                chosen_file = subtitle_files[int(choice) - 1]
+                print(f"Using {chosen_file}.")
+        else:
+            print(f"No subtitle files with a matching name in the same folder as the video were found.")
+        if chosen_file == None:
+            chosen_file = request_path_check_valid("Select an external subs file")
         # Copy the provided subtitle file to the subs file for Anki
-        subprocess.run(["ffmpeg", "-i", subs_in, subs], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        subprocess.run(["ffmpeg", "-i", chosen_file, subs], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
     else:
         chosen_sub = None
         while chosen_sub == None:
@@ -249,6 +325,33 @@ def parse_subtitle_entry(subs_file, buffer):
     except Exception as e:
         raise ValueError(f"Error occurred while parsing SRT entry: {str(e)}")
 
+def get_wordmap(dialogue):
+    response = client.chat.completions.create(
+        model="gpt-4",
+        messages=[
+            {
+                "role": "system",
+                "content": "You will be provided with a sentence. Translate it to English, and make a 'word map'. Here are two examples:\n\n" +
+                "俺も俺のために 君を手伝う\n\n" +
+                "Sample answer:\n\n" +
+                "I will also help you for my sake\t{\"俺も\":\"I\", \"俺の\":\"my\", \"ために\":\"sake\", \"君を\":\"you\", \"手伝う\":\"help\"}\n\n" +
+                "As another example:\n\n" +
+                "Kemana perginya agama-agama itu?\n\n" +
+                "may yield:\n\n" + 
+                "Where did those religions go?\t{\"Kemana\":\"Where\", \"perginya\":\"go\", \"agama-agama\":\"religions\", \"itu\":\"those\"}\n\n" +
+                "The translation and the wordmap should be separated by a tab. All entries in the wordmap (both key and value) should be substrings of the sentence or the translation as-written. There should be no multi-word keys in the wordmap." 
+            },
+            {
+                "role": "user",
+                "content": dialogue
+            }
+        ],
+        temperature=0.5,
+        max_tokens=192,
+        top_p=1
+    )
+    return response
+
 def make_deck(video_file, output_folder_path, media_prefix):
     print("\nCreating cards!")
 
@@ -272,7 +375,12 @@ def make_deck(video_file, output_folder_path, media_prefix):
         except ValueError:
             print("Error: Please enter a valid numeric value for buffer.")
 
-    with open(subs_path, "r") as subs_file, open(import_path, "w") as import_file_handle:
+    try:
+        with open(import_path, "r") as import_read_file:
+            import_read = import_read_file.read()
+    except FileNotFoundError:
+        import_read = ""
+    with open(subs_path, "r") as subs_file, open(import_path, "a+") as import_file_handle:
         while True:
             srt_data = parse_subtitle_entry(subs_file, buffer)
             if srt_data == "EOF":
@@ -281,7 +389,9 @@ def make_deck(video_file, output_folder_path, media_prefix):
             if srt_data == "skip":
                 continue
             index, begin_time, end_time, dialogue = srt_data
-            print(f"{index} {dialogue}")
+            if dialogue in import_read:
+                print(f"Dialogue {dialogue} already in file, skipping!")
+                continue
 
             media_directory = os.path.join(output_folder_path, "media")
             audio_name = f"{media_prefix}_{index}.mp3"
@@ -304,8 +414,23 @@ def make_deck(video_file, output_folder_path, media_prefix):
             if not os.path.exists(image_end_path):
                 subprocess.run(["ffmpeg", "-nostdin", "-ss", end_time, "-i", video_file, "-vf", image_scale_filter, "-vframes", "1", "-q:v", "2", image_end_path], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
 
-            # Write the line as an Anki card
-            import_file_handle.write(f"{audio_name}\t{dialogue}\t<img src='{image_begin_name}'>\t<img src='{image_end_name}'>\n")
+            attempt = 0
+            while attempt < 2:
+                try:
+                    response = get_wordmap(dialogue).choices[0].message.content
+                    print(response)
+                    native_text, wordmap = response.split('\t')
+                    # Write the line as an Anki card
+                    text_line = f"{dialogue}\t{native_text}\t{wordmap}\t{audio_name}\t<img src='{image_begin_name}'>\t<img src='{image_end_name}'>\n"
+                    print(text_line.rstrip())
+                    import_file_handle.write(text_line)
+                    break
+                except Exception as e:
+                    attempt += 1
+                    wait_time = (2 ** attempt) # Exponential backoff with jitter
+                    print(f"Attempt {attempt} failed with error: {e}. Retrying in {wait_time:.2f} seconds...")
+                    time.sleep(wait_time)
+
 
 def move_files_to_anki_media(output_folder_path):
     answer = input("Do you want to copy all files from anki/data/ to ~/anki_media/? (y/n): ").lower()

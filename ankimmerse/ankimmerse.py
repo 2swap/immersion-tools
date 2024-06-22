@@ -1,3 +1,5 @@
+#!/usr/bin/python3
+
 import os
 import time
 import subprocess
@@ -14,6 +16,7 @@ keyFile = open('/home/swap/openaikey', 'r')
 apikey = keyFile.readline().rstrip()
 keyFile.close()
 client = OpenAI(api_key=apikey)
+gpt_batch_size = 5
 
 def make_project_folder():
     project_name = input("Select a project name. This will be appended to all of the generated media files to group them: ")
@@ -80,7 +83,9 @@ def get_video(output_folder_path):
             print("No output path selected.")
             return None
         # Run yt-dlp command to download the video
-        subprocess.run(["yt-dlp", "--all-subs", "--download-archive", "/media/swap/primary/immersion-tools/yt-sync/archive.txt", "--cookies-from-browser", "chrome", "-o", os.path.join(output_path, "%(upload_date>%Y-%m-%d)s - %(title)s.%(ext)s"), youtube_link])
+        command_array = ["yt-dlp", "--all-subs", "--download-archive", "/media/swap/primary/immersion-tools/yt-sync/archive.txt", "--cookies-from-browser", "chrome", "-o", os.path.join(output_path, "%(upload_date>%Y-%m-%d)s - %(title)s.%(ext)s"), youtube_link]
+        print(command_array)
+        subprocess.run(command_array)
         output_path = askdirectory(
             title="Save the YouTube video as...",
             initialdir=output_path,
@@ -247,11 +252,14 @@ def print_audio_streams(video_file):
     audio_data = json.loads(ffprobe_audio_output)
     print("\n\n\nAudio Streams:")
 
+    count = 0
     for stream in audio_data.get("streams", []):
+        count += 1
         index = stream.get("index")
         codec_name = stream.get("codec_name")
         language = stream["tags"].get("language")
         print(f"Index: {index}, Codec Name: {codec_name}, Language: {language}")
+    return count
 
 def get_audio(video_file, output_folder_path):
     audio_file = os.path.join(output_folder_path, "audio.mp3")
@@ -260,8 +268,8 @@ def get_audio(video_file, output_folder_path):
         return
 
     try:
-        print_audio_streams(video_file)
-        audio_stream = input("Enter the audio stream index number: ") #TODO check the number is valid
+        count = print_audio_streams(video_file)
+        audio_stream = 1 if count==1 else input("Enter the audio stream index number: ") #TODO check the number is valid
         print("Extracting and converting audio from video. This will take a few minutes.")
 
         # Extract the audio stream using ffmpeg and save it to the audio file
@@ -325,32 +333,43 @@ def parse_subtitle_entry(subs_file, buffer):
     except Exception as e:
         raise ValueError(f"Error occurred while parsing SRT entry: {str(e)}")
 
+
+wordmap_queue = []
 def get_wordmap(dialogue):
-    response = client.chat.completions.create(
-        model="gpt-4",
-        messages=[
-            {
-                "role": "system",
-                "content": "You will be provided with a sentence. Translate it to English, and make a 'word map'. Here are two examples:\n\n" +
-                "俺も俺のために 君を手伝う\n\n" +
-                "Sample answer:\n\n" +
-                "I will also help you for my sake\t{\"俺も\":\"I\", \"俺の\":\"my\", \"ために\":\"sake\", \"君を\":\"you\", \"手伝う\":\"help\"}\n\n" +
-                "As another example:\n\n" +
-                "Kemana perginya agama-agama itu?\n\n" +
-                "may yield:\n\n" + 
-                "Where did those religions go?\t{\"Kemana\":\"Where\", \"perginya\":\"go\", \"agama-agama\":\"religions\", \"itu\":\"those\"}\n\n" +
-                "The translation and the wordmap should be separated by a tab. All entries in the wordmap (both key and value) should be substrings of the sentence or the translation as-written. There should be no multi-word keys in the wordmap." 
-            },
-            {
-                "role": "user",
-                "content": dialogue
-            }
-        ],
-        temperature=0.5,
-        max_tokens=192,
-        top_p=1
-    )
-    return response
+    global wordmap_queue
+    if len(wordmap_queue) == 0:
+        response = client.chat.completions.create(
+            model="gpt-4-0125-preview",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You will be provided with sentences. Translate them each to English, and make a 'word map', each one on a separate line. As an example:\n\n" +
+                    "1\t俺も俺のために 君を手伝う\n" +
+                    "2\tMakanya efeknya juga bakal berdampak panjang\n\n" +
+                    "Sample answer:\n\n" +
+                    '1\tI will also help you for my sake\t{"俺も":"I", "俺の":"my", "ために":"sake", "君を":"you", "手伝う":"help"}\n' +
+                    '2\tSo the effect will also have a long-term impact\t{"Makanya":"So", "efeknya":"the effect", "juga":"also", "bakal":"will", "berdampak":"impact", "panjang":"long-term"}\n\n' +
+                    "The translation and the wordmap should be separated by a tab, with all line numbers preserved. All entries in the wordmap (both key and value) should be substrings of the sentence or translation as-written. There should be no multi-word keys in the wordmap." 
+                },
+                {
+                    "role": "user",
+                    "content": "\n".join(dialogue)
+                }
+            ],
+            temperature=0.5,
+            max_tokens=600,
+            top_p=1
+        )
+        wordmap_queue_add = response.choices[0].message.content.strip().split("\n")
+        if len(wordmap_queue_add) != len(dialogue):
+            raise ValueError(f"Asked gpt for {len(dialogue)} entries but got {len(wordmap_queue_add)} back!")
+        for i in range(len(dialogue)):
+            if not wordmap_queue_add[i].startswith(str(i+1) + "\t"):
+                raise ValueError(f"gpt response misnumbered!")
+            if len(wordmap_queue_add[i].split("\t")) != 3:
+                raise ValueError(f"gpt response tabs misformatted!")
+        wordmap_queue += wordmap_queue_add
+    return wordmap_queue.pop(0)
 
 def make_deck(video_file, output_folder_path, media_prefix):
     print("\nCreating cards!")
@@ -380,18 +399,21 @@ def make_deck(video_file, output_folder_path, media_prefix):
             import_read = import_read_file.read()
     except FileNotFoundError:
         import_read = ""
-    with open(subs_path, "r") as subs_file, open(import_path, "a+") as import_file_handle:
+
+    srt_data_list = []
+    with open(subs_path, "r") as subs_file:
         while True:
             srt_data = parse_subtitle_entry(subs_file, buffer)
             if srt_data == "EOF":
-                print("Done!\n")
-                return
+                break
             if srt_data == "skip":
                 continue
+            srt_data_list.append(srt_data)
+
+    with open(import_path, "a+") as import_file_handle:
+        for i in range(len(srt_data_list)):
+            srt_data = srt_data_list[i]
             index, begin_time, end_time, dialogue = srt_data
-            if dialogue in import_read:
-                print(f"Dialogue {dialogue} already in file, skipping!")
-                continue
 
             media_directory = os.path.join(output_folder_path, "media")
             audio_name = f"{media_prefix}_{index}.mp3"
@@ -414,15 +436,27 @@ def make_deck(video_file, output_folder_path, media_prefix):
             if not os.path.exists(image_end_path):
                 subprocess.run(["ffmpeg", "-nostdin", "-ss", end_time, "-i", video_file, "-vf", image_scale_filter, "-vframes", "1", "-q:v", "2", image_end_path], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
 
+            if dialogue in import_read:
+                print(f"Dialogue {dialogue} already in file, skipping!")
+                continue
+
+            dialogue_arr = []
+            for delta in range(gpt_batch_size):
+                if i+delta >= len(srt_data_list):
+                    break
+                upcoming_srt_data = srt_data_list[i+delta]
+                _,_,_,upcoming_dialogue = upcoming_srt_data
+                dialogue_arr.append(str(delta+1) + "\t" + upcoming_dialogue)
+            print(str(dialogue_arr) + "\n")
             attempt = 0
             while attempt < 2:
                 try:
-                    response = get_wordmap(dialogue).choices[0].message.content
-                    print(response)
-                    native_text, wordmap = response.split('\t')
+                    response = get_wordmap(dialogue_arr)
+                    print(str(response) + "\n")
+                    line_number, native_text, wordmap = response.split('\t')
                     # Write the line as an Anki card
                     text_line = f"{dialogue}\t{native_text}\t{wordmap}\t{audio_name}\t<img src='{image_begin_name}'>\t<img src='{image_end_name}'>\n"
-                    print(text_line.rstrip())
+                    print(str(text_line.rstrip()) + "\n")
                     import_file_handle.write(text_line)
                     break
                 except Exception as e:
@@ -430,6 +464,7 @@ def make_deck(video_file, output_folder_path, media_prefix):
                     wait_time = (2 ** attempt) # Exponential backoff with jitter
                     print(f"Attempt {attempt} failed with error: {e}. Retrying in {wait_time:.2f} seconds...")
                     time.sleep(wait_time)
+    print("Done making deck!\n")
 
 
 def move_files_to_anki_media(output_folder_path):
@@ -444,7 +479,7 @@ def move_files_to_anki_media(output_folder_path):
             source_file_path = os.path.join(media_directory, file_name)
             destination_file_path = os.path.join(destination_dir, file_name)
             shutil.copy(source_file_path, destination_file_path)
-        print("Done!")
+        print("Files moved!")
     else:
         print("Skipping file copy.")
 

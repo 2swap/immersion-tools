@@ -19,21 +19,29 @@ DIRECTORIES = []
 
 
 def load_directories_from_bookmark():
-    """Loading directories from the bookmark..."""
+    """Loading directories from the bookmark and their subdirectories..."""
     global DIRECTORIES
     assert os.path.exists(BOOKMARK_FILE), f"The bookmark file '{BOOKMARK_FILE}' does not exist."
+
+    DIRECTORIES = []
     
     with open(BOOKMARK_FILE, 'r') as f:
-        DIRECTORIES = [line.strip() for line in f.readlines() if not line.startswith('#')]
-    assert(DIRECTORIES)
+        base_directories = [line.strip() for line in f.readlines() if not line.startswith('#')]
 
+    for directory in base_directories:
+        full_directory_path = os.path.join("/media/swap/primary", directory)
+        if os.path.isdir(full_directory_path):
+            for root, dirs, _ in os.walk(full_directory_path):
+                DIRECTORIES.append(root)
+    
+    assert DIRECTORIES, "No directories were loaded."
 
-def load_videos(search_term):
+def load_videos(search_term, rewatch):
     """Load the watched and unwatched videos lists."""
 
     global TO_WATCH_LIST, WATCHED_IN_BOOKMARK_LIST, WATCHED_OUTSIDE_BOOKMARK_LIST
     bookmark_videos = load_videos_from_bookmark(search_term)
-    if os.path.exists(WATCHED_FILE):
+    if os.path.exists(WATCHED_FILE) and not rewatch:
         with open(WATCHED_FILE, 'r') as f:
             for line in f:
                 video = line.strip()
@@ -47,20 +55,19 @@ def load_videos(search_term):
 
 
 def load_videos_from_directory(directory, search_term):
-    """Load videos from a specific directory."""
-    
+    """Load videos from a specific directory, without including subdirectories."""
+
     full_directory_path = os.path.join("/media/swap/primary", directory)
-    
+
     # Assert that the directory exists
     assert os.path.exists(full_directory_path), f"The directory '{full_directory_path}' does not exist."
 
     videos = []
-    for root, _, files in os.walk(full_directory_path):
-        for file in files:
-            if any(file.lower().endswith(ext.lower()) for ext in EXTENSIONS):
-                full_path = os.path.join(root, file)
-                if not search_term or search_term in full_path:
-                    videos.append(full_path)
+    for file in os.listdir(full_directory_path):
+        full_path = os.path.join(full_directory_path, file)
+        if os.path.isfile(full_path) and any(file.lower().endswith(ext.lower()) for ext in EXTENSIONS):
+            if not search_term or search_term in full_path:
+                videos.append(full_path)
     return sorted(videos)
 
 
@@ -135,14 +142,14 @@ def search_videos_from_list(search_term):
         print_stats(search_term)
         play_video(video)
 
-        if args.listen:
-            continue
         while True:
             choice = input("Choose an option:\n"
-                           "1. Mark this video as watched and continue (y)\n"
-                           "2. Mark as watched and exit (e)\n"
-                           "3. Do not mark as watched and exit (n)\n"
-                           "Enter your choice (Y/e/n): ").lower().strip()
+                           "y: Mark this video as watched and continue (Default)\n"
+                           "e: Mark as watched and exit\n"
+                           "n: Do not mark as watched and exit\n"
+                           "r: Rewatch this video\n"
+                           "d: Delete the video and continue\n"
+                           "Enter your choice (Y/e/n/r/d): ").lower().strip()
 
             if choice in ['y', '']:
                 mark_as_watched(video)
@@ -152,8 +159,18 @@ def search_videos_from_list(search_term):
                 exit(0)
             elif choice == 'n':
                 exit(0)
+            elif choice == 'r':
+                play_video(video)
+            elif choice == 'd':
+                confirmation = input(f"Are you sure you want to delete '{video}'? This action cannot be undone. (y/N): ").lower().strip()
+                if confirmation == 'y':
+                    mark_as_watched(video)
+                    os.remove(video)
+                    break
+                else:
+                    print("Deletion canceled.")
             else:
-                print("Invalid response. Please enter Y, E, or N.")
+                print("Invalid response.")
 
 
 def check_working_directory():
@@ -176,13 +193,13 @@ def check_working_directory():
             pass
 
 
-def main(search_term=None):
+def main(search_term, rewatch):
     global EXTENSIONS
     EXTENSIONS = AUDIO_EXTENSIONS if args.listen else VIDEO_EXTENSIONS
     check_working_directory()
 
     load_directories_from_bookmark()
-    load_videos(search_term)
+    load_videos(search_term, rewatch)
 
     if(args.stats):
         print_stats(search_term)
@@ -194,10 +211,11 @@ def main(search_term=None):
 if __name__ == '__main__':
     # Setup argument parser
     parser = argparse.ArgumentParser(description="Play videos from a folder.")
-    parser.add_argument("-s", "--shuffle", help="shuffle videos"              , action="store_true")
+    parser.add_argument("-s", "--shuffle", help="shuffle videos", action="store_true")
     parser.add_argument("-x", "--stats"  , help="show lists of watched videos", action="store_true")
-    parser.add_argument("-n", "--search", help="start with this directory", type=str)
-    parser.add_argument("-l", "--listen", help="Audio files instead of video files", action="store_true")
+    parser.add_argument("-r", "--rewatch", help="Include videos which have already been seen", action="store_true")
+    parser.add_argument("-n", "--search" , help="start with this directory", type=str)
+    parser.add_argument("-l", "--listen" , help="Audio files instead of video files", action="store_true")
     args = parser.parse_args()
 
-    main(search_term=args.search)
+    main(args.search, args.rewatch)

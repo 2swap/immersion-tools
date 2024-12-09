@@ -152,6 +152,7 @@ def get_subtitles(video_file, output_folder_path, media_prefix):
         print("Subtitle file already exists. Skipping step.")
         return
 
+    use_subs_file = None
     try:
         ffprobe_subtitles_output = subprocess.check_output(["ffprobe", video_file, "-select_streams", "s", "-show_streams", "-of", "json"], stderr=subprocess.PIPE, text=True)
         subtitles_data = json.loads(ffprobe_subtitles_output)
@@ -208,7 +209,7 @@ def get_subtitles(video_file, output_folder_path, media_prefix):
         else:
             print(f"No subtitle files with a matching name in the same folder as the video were found.")
         if chosen_file == None:
-            chosen_file = request_path_check_valid("Select an external subs file")
+            chosen_file = request_path_check_valid("Select an external subs file", video_dir)
         # Copy the provided subtitle file to the subs file for Anki
         subprocess.run(["ffmpeg", "-i", chosen_file, subs], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
     else:

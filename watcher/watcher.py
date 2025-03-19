@@ -17,6 +17,7 @@ WATCHED_OUTSIDE_BOOKMARK_LIST = []
 
 DIRECTORIES = []
 
+ROOT_DIR = "/run/media/2swap/primary/"
 
 def load_directories_from_bookmark():
     """Loading directories from the bookmark and their subdirectories..."""
@@ -29,7 +30,7 @@ def load_directories_from_bookmark():
         base_directories = [line.strip() for line in f.readlines() if not line.startswith('#')]
 
     for directory in base_directories:
-        full_directory_path = os.path.join("/media/swap/primary", directory)
+        full_directory_path = os.path.join(ROOT_DIR, directory)
         if os.path.isdir(full_directory_path):
             for root, dirs, _ in os.walk(full_directory_path):
                 DIRECTORIES.append(root)
@@ -55,9 +56,10 @@ def load_videos(search_term, rewatch):
 
 
 def load_videos_from_directory(directory, search_term):
-    """Load videos from a specific directory, without including subdirectories."""
+    """Load videos from a specific directory, without including subdirectories,
+    and return paths relative to ROOT_DIR."""
 
-    full_directory_path = os.path.join("/media/swap/primary", directory)
+    full_directory_path = os.path.join(ROOT_DIR, directory)
 
     # Assert that the directory exists
     assert os.path.exists(full_directory_path), f"The directory '{full_directory_path}' does not exist."
@@ -67,7 +69,9 @@ def load_videos_from_directory(directory, search_term):
         full_path = os.path.join(full_directory_path, file)
         if os.path.isfile(full_path) and any(file.lower().endswith(ext.lower()) for ext in EXTENSIONS):
             if not search_term or search_term in full_path:
-                videos.append(full_path)
+                # Append the relative path by removing ROOT_DIR prefix
+                relative_path = os.path.relpath(full_path, ROOT_DIR)
+                videos.append(relative_path)
     return sorted(videos)
 
 
@@ -87,7 +91,17 @@ def load_videos_from_bookmark(search_term):
 def play_video(video_path):
     print(video_path)
     print()
-    subprocess.run(['vlc', video_path, 'vlc://quit'], stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+    if args.ffplay:
+        result = subprocess.run(
+            ['ffplay', ROOT_DIR + video_path],
+        )
+    else:
+        result = subprocess.run(
+            ['vlc', ROOT_DIR + video_path, 'vlc://quit'],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.STDOUT
+        )
+    return result.returncode
 
 
 def mark_as_watched(video_path):
@@ -142,6 +156,10 @@ def search_videos_from_list(search_term):
         print_stats(search_term)
         play_video(video)
 
+        if args.listen:
+            mark_as_watched(video)
+            continue  # Proceed to the next video
+
         while True:
             choice = input("Choose an option:\n"
                            "y: Mark this video as watched and continue (Default)\n"
@@ -165,7 +183,7 @@ def search_videos_from_list(search_term):
                 confirmation = input(f"Are you sure you want to delete '{video}'? This action cannot be undone. (y/N): ").lower().strip()
                 if confirmation == 'y':
                     mark_as_watched(video)
-                    os.remove(video)
+                    os.remove(os.path.join(ROOT_DIR, video))
                     break
                 else:
                     print("Deletion canceled.")
@@ -216,6 +234,7 @@ if __name__ == '__main__':
     parser.add_argument("-r", "--rewatch", help="Include videos which have already been seen", action="store_true")
     parser.add_argument("-n", "--search" , help="start with this directory", type=str)
     parser.add_argument("-l", "--listen" , help="Audio files instead of video files", action="store_true")
+    parser.add_argument("-f", "--ffplay" , help="Use ffplay instead of vlc", action="store_true")
     args = parser.parse_args()
 
     main(args.search, args.rewatch)

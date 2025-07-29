@@ -1,0 +1,7 @@
+anki
+Tatoeba-To-Anki/generated_files
+watcher/watched_videos.txt
+watcher/bookmark.txt
+yt-sync/archive.txt
+ankimmerse/*
+!ankimmerse/ankimmerse.py

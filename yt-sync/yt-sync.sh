@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Common prefix and tail for disk location
-common_prefix='/media/swap/primary/'
+common_prefix='/run/media/2swap/primary/'
 common_tail='/%(upload_date>%Y-%m-%d)s - %(title)s.%(ext)s'
 
 # Read the config file line by line, splitting fields using tab as the delimiter

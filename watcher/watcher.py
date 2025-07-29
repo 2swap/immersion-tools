@@ -8,7 +8,7 @@ import argparse
 WATCHED_FILE = "watched_videos.txt"
 BOOKMARK_FILE = "bookmark.txt"
 VIDEO_EXTENSIONS = ['.m4v', '.mp4', '.mkv', '.avi', '.webm']
-AUDIO_EXTENSIONS = ['.wav', '.ogg', '.mp3', '.flac']
+AUDIO_EXTENSIONS = ['.wav', '.ogg', '.mp3', '.flac', '.aac', '.m4a', '.opus']
 EXTENSIONS = []
 
 TO_WATCH_LIST = []
@@ -17,7 +17,7 @@ WATCHED_OUTSIDE_BOOKMARK_LIST = []
 
 DIRECTORIES = []
 
-ROOT_DIR = "/run/media/2swap/primary/"
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 
 def load_directories_from_bookmark():
     """Loading directories from the bookmark and their subdirectories..."""
@@ -96,8 +96,9 @@ def play_video(video_path):
             ['ffplay', ROOT_DIR + video_path],
         )
     else:
+        cmd = ['vlc', os.path.join(ROOT_DIR, video_path), 'vlc://quit']
         result = subprocess.run(
-            ['vlc', ROOT_DIR + video_path, 'vlc://quit'],
+            cmd,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.STDOUT
         )

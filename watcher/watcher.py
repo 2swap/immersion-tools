@@ -19,13 +19,13 @@ DIRECTORIES = []
 
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 
-def load_directories_from_bookmark():
+def load_directories():
     """Loading directories from the bookmark and their subdirectories..."""
     global DIRECTORIES
     assert os.path.exists(BOOKMARK_FILE), f"The bookmark file '{BOOKMARK_FILE}' does not exist."
 
     DIRECTORIES = []
-    
+
     with open(BOOKMARK_FILE, 'r') as f:
         base_directories = [line.strip() for line in f.readlines() if not line.startswith('#')]
 
@@ -34,7 +34,7 @@ def load_directories_from_bookmark():
         if os.path.isdir(full_directory_path):
             for root, dirs, _ in os.walk(full_directory_path):
                 DIRECTORIES.append(root)
-    
+
     assert DIRECTORIES, "No directories were loaded."
 
 def load_videos(search_term, rewatch):
@@ -89,7 +89,6 @@ def load_videos_from_bookmark(search_term):
 
 
 def play_video(video_path):
-    print(video_path)
     print()
     if args.ffplay:
         result = subprocess.run(
@@ -137,8 +136,9 @@ def print_stats(search_term):
         visual_representation = completed + not_completed
 
         # Print the results
-        for i in range(0, len(visual_representation), 50):
-            chunk = visual_representation[i:i+50]
+        dot_width = 70
+        for i in range(0, len(visual_representation), dot_width):
+            chunk = visual_representation[i:i+dot_width]
             if i == 0:
                 print(f"{dir_name.ljust(max_length)} | {chunk}")
             else:
@@ -193,7 +193,6 @@ def search_videos_from_list(search_term):
 
 
 def check_working_directory():
-
     # Check and create WATCHED_FILE if it doesn't exist
     if not os.path.exists(WATCHED_FILE):
         with open(WATCHED_FILE, 'w') as f:
@@ -212,12 +211,13 @@ def check_working_directory():
             pass
 
 
+
 def main(search_term, rewatch):
     global EXTENSIONS
     EXTENSIONS = AUDIO_EXTENSIONS if args.listen else VIDEO_EXTENSIONS
     check_working_directory()
 
-    load_directories_from_bookmark()
+    load_directories()
     load_videos(search_term, rewatch)
 
     if(args.stats):
@@ -236,6 +236,7 @@ if __name__ == '__main__':
     parser.add_argument("-n", "--search" , help="start with this directory", type=str)
     parser.add_argument("-l", "--listen" , help="Audio files instead of video files", action="store_true")
     parser.add_argument("-f", "--ffplay" , help="Use ffplay instead of vlc", action="store_true")
+    parser.add_argument("-c", "--clean"  , help="Clear out all files from watched list which no longer exist", action="store_true")
     args = parser.parse_args()
 
     main(args.search, args.rewatch)

@@ -12,7 +12,7 @@ from openai import OpenAI
 from tkinter import Tk
 from tkinter.filedialog import askopenfilename, asksaveasfilename, askdirectory
 
-keyFile = open('/home/swap/openaikey', 'r')
+keyFile = open(os.path.expanduser("~/openaikey"), 'r')
 apikey = keyFile.readline().rstrip()
 keyFile.close()
 client = OpenAI(api_key=apikey)
@@ -339,9 +339,9 @@ wordmap_queue = []
 def get_wordmap(dialogue):
     global wordmap_queue
     if len(wordmap_queue) == 0:
-        response = client.chat.completions.create(
-            model="gpt-4-0125-preview",
-            messages=[
+        response = client.responses.parse(
+            model="gpt-5-nano",
+            input=[
                 {
                     "role": "system",
                     "content": "You will be provided with sentences. Translate them each to English, and make a 'word map', each one on a separate line. As an example:\n\n" +
@@ -357,11 +357,8 @@ def get_wordmap(dialogue):
                     "content": "\n".join(dialogue)
                 }
             ],
-            temperature=0.5,
-            max_tokens=600,
-            top_p=1
-        )
-        wordmap_queue_add = response.choices[0].message.content.strip().split("\n")
+        ).output_text
+        wordmap_queue_add = response.strip().split("\n")
         if len(wordmap_queue_add) != len(dialogue):
             raise ValueError(f"Asked gpt for {len(dialogue)} entries but got {len(wordmap_queue_add)} back!")
         for i in range(len(dialogue)):
